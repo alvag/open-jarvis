@@ -1,6 +1,11 @@
-import { Bot } from "grammy";
-import type { Channel, MessageHandler, IncomingMessage } from "./channel.js";
+import { Bot, type Context } from "grammy";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
 import { log } from "../logger.js";
+
+const UPLOADS_DIR = "./data/uploads";
+mkdirSync(UPLOADS_DIR, { recursive: true });
 
 export class TelegramChannel implements Channel {
   name = "telegram";
@@ -13,51 +18,119 @@ export class TelegramChannel implements Channel {
   }
 
   async start(handler: MessageHandler): Promise<void> {
+    // Text messages
     this.bot.on("message:text", async (ctx) => {
-      const userId = ctx.from.id;
+      await this.handleIncoming(ctx, ctx.message.text, [], handler);
+    });
 
-      if (!this.allowedUserIds.has(userId)) {
-        log("warn", "telegram", "access denied", { userId });
-        await ctx.reply("Access denied.");
+    // Photo messages
+    this.bot.on("message:photo", async (ctx) => {
+      const photos = ctx.message.photo;
+      const largest = photos[photos.length - 1];
+      const caption = ctx.message.caption || "Subí esta imagen a Drive";
+
+      try {
+        const file = await ctx.api.getFile(largest.file_id);
+        const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+        const res = await fetch(fileUrl);
+        const buffer = Buffer.from(await res.arrayBuffer());
+
+        const fileName = `photo_${Date.now()}.jpg`;
+        const filePath = join(UPLOADS_DIR, fileName);
+        writeFileSync(filePath, buffer);
+
+        const attachment: Attachment = { filePath, fileName };
+        await this.handleIncoming(ctx, caption, [attachment], handler);
+      } catch (err) {
+        log("error", "telegram", "error downloading photo", {
+          error: (err as Error).message,
+        });
+        await ctx.reply("No pude descargar la imagen. Intentá de nuevo.");
+      }
+    });
+
+    // Document messages (for images sent as files)
+    this.bot.on("message:document", async (ctx) => {
+      const doc = ctx.message.document;
+      const mimeType = doc.mime_type || "";
+      const caption = ctx.message.caption || "Subí este archivo a Drive";
+
+      if (!mimeType.startsWith("image/") && !mimeType.startsWith("application/pdf")) {
+        // Only handle images and PDFs for now
+        await this.handleIncoming(ctx, caption, [], handler);
         return;
       }
 
-      const incoming: IncomingMessage = {
-        userId: String(userId),
-        userName: ctx.from.first_name,
-        text: ctx.message.text,
-        channelId: "telegram",
-        rawEvent: ctx,
-      };
-
-      await ctx.replyWithChatAction("typing");
-
       try {
-        const response = await handler(incoming);
+        const file = await ctx.api.getFile(doc.file_id);
+        const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+        const res = await fetch(fileUrl);
+        const buffer = Buffer.from(await res.arrayBuffer());
 
-        // Telegram has a 4096 char limit per message
-        if (response.length <= 4096) {
-          await ctx.reply(response, { parse_mode: "Markdown" }).catch(() =>
-            ctx.reply(response),
-          );
-        } else {
-          const chunks = splitMessage(response, 4096);
-          for (const chunk of chunks) {
-            await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
-              ctx.reply(chunk),
-            );
-          }
-        }
+        const fileName = doc.file_name || `file_${Date.now()}`;
+        const filePath = join(UPLOADS_DIR, fileName);
+        writeFileSync(filePath, buffer);
+
+        const attachment: Attachment = { filePath, fileName };
+        await this.handleIncoming(ctx, caption, [attachment], handler);
       } catch (err) {
-        log("error", "telegram", "error handling message", {
+        log("error", "telegram", "error downloading document", {
           error: (err as Error).message,
-          userId: String(userId),
         });
-        await ctx.reply("Something went wrong. Please try again.");
+        await ctx.reply("No pude descargar el archivo. Intentá de nuevo.");
       }
     });
 
     this.bot.start();
+  }
+
+  private async handleIncoming(
+    ctx: Context,
+    text: string,
+    attachments: Attachment[],
+    handler: MessageHandler,
+  ): Promise<void> {
+    const userId = ctx.from!.id;
+
+    if (!this.allowedUserIds.has(userId)) {
+      log("warn", "telegram", "access denied", { userId });
+      await ctx.reply("Access denied.");
+      return;
+    }
+
+    const incoming: IncomingMessage = {
+      userId: String(userId),
+      userName: ctx.from!.first_name,
+      text,
+      channelId: "telegram",
+      rawEvent: ctx,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    };
+
+    await ctx.replyWithChatAction("typing");
+
+    try {
+      const response = await handler(incoming);
+
+      if (response.length <= 4096) {
+        await ctx.reply(response, { parse_mode: "Markdown" }).catch(() =>
+          ctx.reply(response),
+        );
+      } else {
+        const chunks = splitMessage(response, 4096);
+        for (const chunk of chunks) {
+          await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
+            ctx.reply(chunk),
+          );
+        }
+      }
+    } catch (err) {
+      log("error", "telegram", "error handling message", {
+        error: (err as Error).message,
+        userId: String(userId),
+      });
+      await ctx.reply("Something went wrong. Please try again.");
+    }
   }
 
   async stop(): Promise<void> {

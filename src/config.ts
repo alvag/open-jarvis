@@ -37,6 +37,17 @@ export const config = {
       10,
     ),
   },
+  google: {
+    enabled: {
+      drive: process.env.GWS_DRIVE_ENABLED === "true",
+      gmail: process.env.GWS_GMAIL_ENABLED === "true",
+      calendar: process.env.GWS_CALENDAR_ENABLED === "true",
+      sheets: process.env.GWS_SHEETS_ENABLED === "true",
+    },
+    driveFolderIds: process.env.GWS_DRIVE_FOLDER_IDS
+      ? process.env.GWS_DRIVE_FOLDER_IDS.split(",").map((id) => id.trim()).filter(Boolean)
+      : [],
+  },
   paths: {
     database: process.env.DB_PATH || "./data/jarvis.db",
     soul: process.env.SOUL_PATH || "./soul.md",

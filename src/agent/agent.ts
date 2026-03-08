@@ -28,17 +28,26 @@ export async function runAgent(
   // Load session history
   const sessionHistory = memoryManager.getSessionMessages(context.sessionId);
 
+  // Build user content with attachment info
+  let userContent = context.userMessage;
+  if (context.attachments && context.attachments.length > 0) {
+    const attachmentInfo = context.attachments
+      .map((a) => `[Archivo adjunto: ${a.fileName}, guardado en ${a.filePath}]`)
+      .join("\n");
+    userContent = `${attachmentInfo}\n\n${userContent}`;
+  }
+
   // Build messages array
   const messages: ChatMessage[] = [
     systemMessage,
     ...sessionHistory,
-    { role: "user", content: context.userMessage },
+    { role: "user", content: userContent },
   ];
 
   // Save user message to session
   memoryManager.saveSessionMessage(context.sessionId, {
     role: "user",
-    content: context.userMessage,
+    content: userContent,
   });
 
   // Get tool definitions

@@ -16,6 +16,11 @@ import saveMemoryTool, {
 import searchMemoriesTool, {
   setMemoryManager as setSearchMemoryManager,
 } from "./tools/built-in/search-memories.js";
+import proposeTool from "./tools/built-in/propose-tool.js";
+import gwsDriveTool from "./tools/built-in/gws-drive.js";
+import gwsGmailTool from "./tools/built-in/gws-gmail.js";
+import gwsCalendarTool from "./tools/built-in/gws-calendar.js";
+import gwsSheetsTool from "./tools/built-in/gws-sheets.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -36,6 +41,25 @@ async function main() {
   setSearchMemoryManager(memoryManager);
   toolRegistry.register(saveMemoryTool);
   toolRegistry.register(searchMemoriesTool);
+  toolRegistry.register(proposeTool);
+
+  // Google Workspace tools (conditional)
+  if (config.google.enabled.drive) {
+    toolRegistry.register(gwsDriveTool);
+    log("info", "startup", "Google Drive tool enabled");
+  }
+  if (config.google.enabled.gmail) {
+    toolRegistry.register(gwsGmailTool);
+    log("info", "startup", "Google Gmail tool enabled");
+  }
+  if (config.google.enabled.calendar) {
+    toolRegistry.register(gwsCalendarTool);
+    log("info", "startup", "Google Calendar tool enabled");
+  }
+  if (config.google.enabled.sheets) {
+    toolRegistry.register(gwsSheetsTool);
+    log("info", "startup", "Google Sheets tool enabled");
+  }
 
   // 4. Initialize LLM with model tiers
   const llm = new OpenRouterProvider(
@@ -65,6 +89,7 @@ async function main() {
         channelId: msg.channelId,
         sessionId,
         userMessage: msg.text,
+        attachments: msg.attachments,
       },
       llm,
       toolRegistry,

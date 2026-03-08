@@ -4,7 +4,7 @@ const GREETING_PATTERNS =
   /^(hola|hey|hi|hello|buenas|buenos días|buenas tardes|buenas noches|qué tal|que tal|sup|yo|ey|gracias|thanks|ok|dale|listo|bye|chau|adiós|adios)\b/i;
 
 const COMPLEX_KEYWORDS =
-  /\b(analiz|compar|explic|resum|traduc|escrib|program|codific|refactor|debug|evalua|investig|busca|recuerda|recordá|remember|save|guarda|olvid|forget|hora|time|fecha|date|calcula|convert)\b/i;
+  /\b(analiz|compar|explic|resum|traduc|escrib|program|codific|refactor|debug|evalua|investig|busca|recuerda|recordá|remember|save|guarda|olvid|forget|hora|time|fecha|date|calcula|convert|drive|gmail|calendar|sheet|archivo|email|correo|evento|cita|agenda|carpeta|folder)\b/i;
 
 export function classifyComplexity(
   message: string,

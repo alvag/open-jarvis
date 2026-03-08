@@ -23,6 +23,7 @@ export interface AgentContext {
   channelId: string;
   sessionId: string;
   userMessage: string;
+  attachments?: { filePath: string; fileName: string }[];
 }
 
 export interface AgentResponse {
