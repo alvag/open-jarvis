@@ -1,0 +1,80 @@
+# Jarvis — Personal AI Agent
+
+## Project Overview
+Jarvis is a personal AI agent that runs locally and uses Telegram as its interface. It thinks via an LLM (OpenRouter), executes tools, and remembers information persistently.
+
+## Tech Stack
+- **Runtime**: Node.js with TypeScript (ES modules)
+- **Telegram**: grammy (long polling, no web server)
+- **LLM**: OpenRouter (OpenAI-compatible API)
+- **Database**: better-sqlite3 (WAL mode)
+- **Dev runner**: tsx (with watch mode)
+
+## Architecture
+```
+src/
+├── index.ts              # Entry point, wires everything
+├── config.ts             # Loads .env, typed config
+├── types.ts              # Shared types (ChatMessage, AgentContext)
+├── agent/
+│   ├── agent.ts          # Agent loop (LLM ↔ tools cycle, max iterations)
+│   └── context-builder.ts # Builds system prompt (soul + memories)
+├── llm/
+│   ├── llm-provider.ts   # LLMProvider interface
+│   └── openrouter.ts     # OpenRouter implementation
+├── memory/
+│   ├── db.ts             # SQLite init + schema migrations
+│   ├── memory-manager.ts # Memory API (save, search, sessions)
+│   └── soul.ts           # Loads soul.md personality file
+├── tools/
+│   ├── tool-types.ts     # Tool interface (MCP-compatible schema)
+│   ├── tool-registry.ts  # Registry pattern (register, execute)
+│   └── built-in/         # Built-in tools
+│       ├── get-current-time.ts
+│       ├── save-memory.ts
+│       └── search-memories.ts
+└── channels/
+    ├── channel.ts        # Channel interface
+    └── telegram.ts       # Grammy Telegram implementation
+```
+
+## Key Patterns
+
+### Adding a New Tool
+1. Create file in `src/tools/built-in/your-tool.ts`
+2. Export a `Tool` object with `definition` and `execute`
+3. Import and register in `src/index.ts`
+
+### Adding a New Channel
+1. Create file in `src/channels/your-channel.ts` implementing `Channel` interface
+2. Instantiate in `src/index.ts` with the same handler callback
+
+### Agent Loop
+- Receives user message → builds context (soul.md + memories + tools) → calls LLM
+- If LLM returns tool_calls → executes tools → loops back to LLM
+- Max iterations configurable via `AGENT_MAX_ITERATIONS` env var
+- Session-based: messages grouped by 30-minute timeout
+
+### Memory System
+- **SQLite tables**: `memories` (long-term facts), `sessions`, `session_messages` (conversation history)
+- **Search**: LIKE-based on key and content fields
+- **Sessions**: Auto-created when last activity > timeout threshold
+
+## Security
+- Telegram user ID whitelist (fail closed)
+- All secrets in `.env` (gitignored)
+- Tool execution sandboxed in try/catch
+- Agent loop iteration cap prevents infinite loops
+
+## Commands
+- `npm run dev` — Start with hot reload (tsx watch)
+- `npm start` — Start without watch
+- `npm run typecheck` — Type check without emitting
+- `npm run build` — Compile to dist/
+
+## Configuration
+All config via `.env` — see `.env.example` for all variables.
+Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, `OPENROUTER_API_KEY`
+
+## Personality
+Edit `soul.md` to change Jarvis's personality, tone, and rules.
