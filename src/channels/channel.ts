@@ -12,7 +12,12 @@ export interface IncomingMessage {
   attachments?: Attachment[];
 }
 
-export type MessageHandler = (msg: IncomingMessage) => Promise<string>;
+export interface ChannelResponse {
+  text: string;
+  images?: string[];
+}
+
+export type MessageHandler = (msg: IncomingMessage) => Promise<ChannelResponse>;
 
 export interface Channel {
   name: string;

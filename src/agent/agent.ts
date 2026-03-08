@@ -16,6 +16,7 @@ export async function runAgent(
 ): Promise<AgentResponse> {
   const startTime = Date.now();
   const toolsUsed: string[] = [];
+  const images: string[] = [];
 
   // Build system prompt with personality + memories
   const systemMessage = buildSystemPrompt(
@@ -88,6 +89,7 @@ export async function runAgent(
       return {
         text: response.content || "I have nothing to say.",
         toolsUsed,
+        images: images.length > 0 ? images : undefined,
       };
     }
 
@@ -115,6 +117,12 @@ export async function runAgent(
       messages.push(toolMessage);
       memoryManager.saveSessionMessage(context.sessionId, toolMessage);
       toolsUsed.push(toolCall.function.name);
+
+      // Collect image paths from tool results
+      const resultData = result.data as Record<string, unknown> | null;
+      if (resultData?.imagePath) {
+        images.push(resultData.imagePath as string);
+      }
     }
   }
 
@@ -122,5 +130,6 @@ export async function runAgent(
   return {
     text: "I got stuck in a loop. Let me try a different approach.",
     toolsUsed,
+    images: images.length > 0 ? images : undefined,
   };
 }

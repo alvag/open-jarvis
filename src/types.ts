@@ -29,4 +29,5 @@ export interface AgentContext {
 export interface AgentResponse {
   text: string;
   toolsUsed: string[];
+  images?: string[];
 }

@@ -21,6 +21,7 @@ import gwsDriveTool from "./tools/built-in/gws-drive.js";
 import gwsGmailTool from "./tools/built-in/gws-gmail.js";
 import gwsCalendarTool from "./tools/built-in/gws-calendar.js";
 import gwsSheetsTool from "./tools/built-in/gws-sheets.js";
+import tableImageTool from "./tools/built-in/table-image.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -42,6 +43,7 @@ async function main() {
   toolRegistry.register(saveMemoryTool);
   toolRegistry.register(searchMemoriesTool);
   toolRegistry.register(proposeTool);
+  toolRegistry.register(tableImageTool);
 
   // Google Workspace tools (conditional)
   if (config.google.enabled.drive) {
@@ -104,7 +106,7 @@ async function main() {
       });
     }
 
-    return result.text;
+    return { text: result.text, images: result.images };
   });
 
   log("info", "startup", "Jarvis is online. Listening for Telegram messages...");

@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, InputFile, type Context } from "grammy";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
@@ -112,16 +112,26 @@ export class TelegramChannel implements Channel {
     try {
       const response = await handler(incoming);
 
-      if (response.length <= 4096) {
-        await ctx.reply(response, { parse_mode: "Markdown" }).catch(() =>
-          ctx.reply(response),
-        );
-      } else {
-        const chunks = splitMessage(response, 4096);
-        for (const chunk of chunks) {
-          await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
-            ctx.reply(chunk),
+      // Send text response
+      if (response.text) {
+        if (response.text.length <= 4096) {
+          await ctx.reply(response.text, { parse_mode: "Markdown" }).catch(() =>
+            ctx.reply(response.text),
           );
+        } else {
+          const chunks = splitMessage(response.text, 4096);
+          for (const chunk of chunks) {
+            await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
+              ctx.reply(chunk),
+            );
+          }
+        }
+      }
+
+      // Send images
+      if (response.images && response.images.length > 0) {
+        for (const imgPath of response.images) {
+          await ctx.replyWithPhoto(new InputFile(imgPath));
         }
       }
     } catch (err) {
