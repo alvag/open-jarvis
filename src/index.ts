@@ -31,6 +31,18 @@ async function main() {
   const db = initDatabase(config.paths.database);
   const memoryManager = createMemoryManager(db);
 
+  // Clean up old sessions
+  const deletedSessions = memoryManager.cleanupOldSessions(
+    config.agent.sessionRetentionDays,
+  );
+  if (deletedSessions > 0) {
+    log(
+      "info",
+      "startup",
+      `Cleaned up ${deletedSessions} old sessions (>${config.agent.sessionRetentionDays} days)`,
+    );
+  }
+
   // 2. Load personality
   const soulContent = loadSoul(config.paths.soul);
 

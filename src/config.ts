@@ -36,6 +36,10 @@ export const config = {
       process.env.SESSION_TIMEOUT_MINUTES || "30",
       10,
     ),
+    sessionRetentionDays: parseInt(
+      process.env.SESSION_RETENTION_DAYS || "30",
+      10,
+    ),
   },
   google: {
     enabled: {
