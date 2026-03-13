@@ -31,6 +31,7 @@ export interface MemoryManager {
   deleteMemory(id: number): boolean;
   getSessionMessages(sessionId: string): ChatMessage[];
   saveSessionMessage(sessionId: string, message: ChatMessage): void;
+  cleanupOldSessions(retentionDays: number): number;
   resolveSession(
     userId: string,
     channelId: string,
@@ -104,6 +105,15 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
     `),
     touchSession: db.prepare(`
       UPDATE sessions SET last_active = datetime('now') WHERE id = ?
+    `),
+    deleteOldSessionMessages: db.prepare(`
+      DELETE FROM session_messages
+      WHERE session_id IN (
+        SELECT id FROM sessions WHERE last_active < datetime('now', '-' || ? || ' days')
+      )
+    `),
+    deleteOldSessions: db.prepare(`
+      DELETE FROM sessions WHERE last_active < datetime('now', '-' || ? || ' days')
     `),
   };
 
@@ -208,6 +218,12 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
         message.tool_call_id ?? null,
       );
       stmts.touchSession.run(sessionId);
+    },
+
+    cleanupOldSessions(retentionDays) {
+      stmts.deleteOldSessionMessages.run(retentionDays);
+      const result = stmts.deleteOldSessions.run(retentionDays);
+      return result.changes;
     },
 
     resolveSession(userId, channelId, timeoutMinutes) {
