@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { ChatMessage } from "../types.js";
-import type { MemoryManager } from "../memory/memory-manager.js";
+import type { Memory, MemoryManager } from "../memory/memory-manager.js";
 
 function loadAgentRules(): string {
   try {
@@ -30,8 +30,10 @@ export function buildSystemPrompt(
     `\n## Current Context\n- Date: ${new Date().toLocaleDateString("en-US", { dateStyle: "full" })}\n- Time: ${new Date().toLocaleTimeString("en-US", { timeStyle: "short" })}`,
   );
 
-  // Relevant memories
-  const relevant = memoryManager.searchMemories(userId, userMessage, 5);
+  // Relevant memories via FTS5 (ranked by relevance)
+  const relevant = memoryManager.searchMemories(userId, userMessage, 7);
+
+  // Recent memories (temporal context)
   const recent = memoryManager.getRecentMemories(userId, 5);
 
   // Deduplicate by id
@@ -43,9 +45,28 @@ export function buildSystemPrompt(
   });
 
   if (allMemories.length > 0) {
-    parts.push("\n## What you know about this user");
+    // Group by category for better organization
+    const grouped: Record<string, Memory[]> = {};
     for (const m of allMemories) {
-      parts.push(`- **${m.key}**: ${m.content}`);
+      if (!grouped[m.category]) grouped[m.category] = [];
+      grouped[m.category].push(m);
+    }
+
+    parts.push("\n## What you know about this user");
+
+    const categoryLabels: Record<string, string> = {
+      preference: "Preferences",
+      fact: "Facts",
+      event: "Events",
+      note: "Notes",
+    };
+
+    for (const [cat, memories] of Object.entries(grouped)) {
+      const label = categoryLabels[cat] || cat;
+      parts.push(`\n### ${label}`);
+      for (const m of memories) {
+        parts.push(`- **${m.key}**: ${m.content}`);
+      }
     }
   }
 
