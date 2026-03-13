@@ -47,5 +47,23 @@ export function initDatabase(dbPath: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_session_messages ON session_messages(session_id);
   `);
 
+  runMigrations(db);
+
   return db;
+}
+
+function runMigrations(db: Database.Database): void {
+  const currentVersion =
+    (db.pragma("user_version", { simple: true }) as number) || 0;
+
+  if (currentVersion < 1) {
+    // Dedup existing memories before adding unique constraint
+    db.exec(`
+      DELETE FROM memories WHERE id NOT IN (
+        SELECT MIN(id) FROM memories GROUP BY user_id, key
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_user_key ON memories(user_id, key);
+    `);
+    db.pragma("user_version = 1");
+  }
 }

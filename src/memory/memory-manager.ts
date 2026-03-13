@@ -33,13 +33,13 @@ export interface MemoryManager {
 
 export function createMemoryManager(db: Database.Database): MemoryManager {
   const stmts = {
-    insertMemory: db.prepare(`
+    upsertMemory: db.prepare(`
       INSERT INTO memories (user_id, key, content, category)
       VALUES (?, ?, ?, ?)
-    `),
-    updateMemory: db.prepare(`
-      UPDATE memories SET content = ?, updated_at = datetime('now')
-      WHERE user_id = ? AND key = ?
+      ON CONFLICT(user_id, key) DO UPDATE SET
+        content = ?,
+        category = ?,
+        updated_at = datetime('now')
     `),
     findMemoryByKey: db.prepare(`
       SELECT * FROM memories WHERE user_id = ? AND key = ?
@@ -83,23 +83,8 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
 
   return {
     saveMemory(userId, key, content, category = "fact") {
-      const existing = stmts.findMemoryByKey.get(userId, key) as
-        | Memory
-        | undefined;
-      if (existing) {
-        stmts.updateMemory.run(content, userId, key);
-        return { ...existing, content, updated_at: new Date().toISOString() };
-      }
-      const result = stmts.insertMemory.run(userId, key, content, category);
-      return {
-        id: Number(result.lastInsertRowid),
-        user_id: userId,
-        key,
-        content,
-        category,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      stmts.upsertMemory.run(userId, key, content, category, content, category);
+      return stmts.findMemoryByKey.get(userId, key) as Memory;
     },
 
     searchMemories(userId, query, limit = 10) {
