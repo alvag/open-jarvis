@@ -66,4 +66,33 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 1");
   }
+
+  if (currentVersion < 2) {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        key,
+        content,
+        content=memories,
+        content_rowid=id
+      );
+
+      -- Populate FTS index from existing data
+      INSERT INTO memories_fts(memories_fts) VALUES('rebuild');
+
+      -- Keep FTS in sync with memories table
+      CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, key, content) VALUES (new.id, new.key, new.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, key, content) VALUES ('delete', old.id, old.key, old.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, key, content) VALUES ('delete', old.id, old.key, old.content);
+        INSERT INTO memories_fts(rowid, key, content) VALUES (new.id, new.key, new.content);
+      END;
+    `);
+    db.pragma("user_version = 2");
+  }
 }

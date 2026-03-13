@@ -50,6 +50,14 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
       ORDER BY updated_at DESC
       LIMIT ?
     `),
+    searchMemoriesFts: db.prepare(`
+      SELECT m.* FROM memories m
+      JOIN memories_fts fts ON m.id = fts.rowid
+      WHERE fts.memories_fts MATCH ?
+      AND m.user_id = ?
+      ORDER BY rank
+      LIMIT ?
+    `),
     recentMemories: db.prepare(`
       SELECT * FROM memories
       WHERE user_id = ?
@@ -88,6 +96,28 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
     },
 
     searchMemories(userId, query, limit = 10) {
+      // Sanitize query for FTS5: escape special chars, add prefix matching
+      const ftsQuery = query
+        .replace(/['"*():\-]/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((term) => `"${term}"*`)
+        .join(" OR ");
+
+      if (ftsQuery) {
+        try {
+          return stmts.searchMemoriesFts.all(
+            ftsQuery,
+            userId,
+            limit,
+          ) as Memory[];
+        } catch {
+          // Fallback to LIKE if FTS query fails
+        }
+      }
+
+      // Fallback: LIKE-based search
       const pattern = `%${query}%`;
       return stmts.searchMemories.all(
         userId,
