@@ -51,10 +51,28 @@ const saveMemoryTool: Tool = {
       category,
     );
 
-    return {
-      success: true,
-      data: { id: memory.id, key: memory.key, content: memory.content },
+    // Find potentially related memories for consolidation hints
+    const related = memoryManagerRef
+      .searchMemories(context.userId, key, 5)
+      .filter((m) => m.id !== memory.id);
+
+    const result: Record<string, unknown> = {
+      id: memory.id,
+      key: memory.key,
+      content: memory.content,
     };
+
+    if (related.length > 0) {
+      result.related_memories = related.map((m) => ({
+        id: m.id,
+        key: m.key,
+        content: m.content,
+      }));
+      result.consolidation_hint =
+        "Review the related memories above. If any are redundant or overlap with what you just saved, consider updating them to consolidate information. Use save_memory with the same key to update, or note that outdated memories may need cleanup.";
+    }
+
+    return { success: true, data: result };
   },
 };
 
