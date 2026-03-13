@@ -48,6 +48,13 @@ export const config = {
       ? process.env.GWS_DRIVE_FOLDER_IDS.split(",").map((id) => id.trim()).filter(Boolean)
       : [],
   },
+  bitbucket: {
+    enabled: !!(process.env.BITBUCKET_EMAIL && process.env.BITBUCKET_API_TOKEN),
+    email: process.env.BITBUCKET_EMAIL || "",
+    apiToken: process.env.BITBUCKET_API_TOKEN || "",
+    defaultWorkspace: process.env.BITBUCKET_WORKSPACE || "",
+    defaultRepoSlug: process.env.BITBUCKET_REPO_SLUG || "",
+  },
   paths: {
     database: process.env.DB_PATH || "./data/jarvis.db",
     soul: process.env.SOUL_PATH || "./soul.md",

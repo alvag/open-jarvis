@@ -22,6 +22,7 @@ import gwsGmailTool from "./tools/built-in/gws-gmail.js";
 import gwsCalendarTool from "./tools/built-in/gws-calendar.js";
 import gwsSheetsTool from "./tools/built-in/gws-sheets.js";
 import tableImageTool from "./tools/built-in/table-image.js";
+import bitbucketPrsTool from "./tools/built-in/bitbucket-prs.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -61,6 +62,12 @@ async function main() {
   if (config.google.enabled.sheets) {
     toolRegistry.register(gwsSheetsTool);
     log("info", "startup", "Google Sheets tool enabled");
+  }
+
+  // Bitbucket tools (conditional)
+  if (config.bitbucket.enabled) {
+    toolRegistry.register(bitbucketPrsTool);
+    log("info", "startup", "Bitbucket PRs tool enabled");
   }
 
   // 4. Initialize LLM with model tiers
