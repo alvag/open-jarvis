@@ -150,11 +150,14 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
 
       if (ftsQuery) {
         try {
-          return stmts.searchMemoriesFts.all(
+          const ftsResults = stmts.searchMemoriesFts.all(
             ftsQuery,
             userId,
             limit,
           ) as Memory[];
+          if (ftsResults.length > 0) {
+            return ftsResults;
+          }
         } catch {
           // Fallback to LIKE if FTS query fails
         }
