@@ -15,9 +15,20 @@ const searchMemoriesTool: Tool = {
     parameters: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          description:
+            "Action: 'search' (default) or 'history' (show change history for a memory key)",
+          enum: ["search", "history"],
+        },
         query: {
           type: "string",
           description: "Search query to find relevant memories",
+        },
+        key: {
+          type: "string",
+          description:
+            "Memory key to get history for (required for 'history' action)",
         },
         limit: {
           type: "string",
@@ -33,6 +44,40 @@ const searchMemoriesTool: Tool = {
       return { success: false, data: null, error: "Memory manager not initialized" };
     }
 
+    const action = (args.action as string) || "search";
+
+    if (action === "history") {
+      const key = args.key as string;
+      if (!key) {
+        return {
+          success: false,
+          data: null,
+          error: "key is required for 'history' action",
+        };
+      }
+
+      const memories = memoryManagerRef.searchMemories(
+        context.userId,
+        key,
+        1,
+      );
+      if (memories.length === 0) {
+        return { success: true, data: { count: 0, history: [] } };
+      }
+
+      const history = memoryManagerRef.getMemoryHistory(memories[0].id, 10);
+      return {
+        success: true,
+        data: {
+          key,
+          current: memories[0].content,
+          count: history.length,
+          history,
+        },
+      };
+    }
+
+    // Default: search action
     const query = args.query as string;
     const limit = parseInt((args.limit as string) || "5", 10);
 

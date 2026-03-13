@@ -95,4 +95,21 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 2");
   }
+
+  if (currentVersion < 3) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS memory_history (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        memory_id   INTEGER NOT NULL,
+        user_id     TEXT NOT NULL,
+        key         TEXT NOT NULL,
+        old_content TEXT NOT NULL,
+        new_content TEXT NOT NULL,
+        changed_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_memory_history_memory ON memory_history(memory_id);
+    `);
+    db.pragma("user_version = 3");
+  }
 }

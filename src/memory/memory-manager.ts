@@ -12,6 +12,12 @@ export interface Memory {
   updated_at: string;
 }
 
+export interface MemoryHistoryEntry {
+  old_content: string;
+  new_content: string;
+  changed_at: string;
+}
+
 export interface MemoryManager {
   saveMemory(
     userId: string,
@@ -21,6 +27,7 @@ export interface MemoryManager {
   ): Memory;
   searchMemories(userId: string, query: string, limit?: number): Memory[];
   getRecentMemories(userId: string, limit?: number): Memory[];
+  getMemoryHistory(memoryId: number, limit?: number): MemoryHistoryEntry[];
   deleteMemory(id: number): boolean;
   getSessionMessages(sessionId: string): ChatMessage[];
   saveSessionMessage(sessionId: string, message: ChatMessage): void;
@@ -58,6 +65,17 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
       ORDER BY rank
       LIMIT ?
     `),
+    insertHistory: db.prepare(`
+      INSERT INTO memory_history (memory_id, user_id, key, old_content, new_content)
+      VALUES (?, ?, ?, ?, ?)
+    `),
+    getMemoryHistory: db.prepare(`
+      SELECT old_content, new_content, changed_at
+      FROM memory_history
+      WHERE memory_id = ?
+      ORDER BY changed_at DESC
+      LIMIT ?
+    `),
     recentMemories: db.prepare(`
       SELECT * FROM memories
       WHERE user_id = ?
@@ -91,6 +109,21 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
 
   return {
     saveMemory(userId, key, content, category = "fact") {
+      const existing = stmts.findMemoryByKey.get(userId, key) as
+        | Memory
+        | undefined;
+
+      // Save history if updating
+      if (existing && existing.content !== content) {
+        stmts.insertHistory.run(
+          existing.id,
+          userId,
+          key,
+          existing.content,
+          content,
+        );
+      }
+
       stmts.upsertMemory.run(userId, key, content, category, content, category);
       return stmts.findMemoryByKey.get(userId, key) as Memory;
     },
@@ -129,6 +162,13 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
 
     getRecentMemories(userId, limit = 10) {
       return stmts.recentMemories.all(userId, limit) as Memory[];
+    },
+
+    getMemoryHistory(memoryId, limit = 10) {
+      return stmts.getMemoryHistory.all(
+        memoryId,
+        limit,
+      ) as MemoryHistoryEntry[];
     },
 
     deleteMemory(id) {
