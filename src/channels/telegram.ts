@@ -108,6 +108,9 @@ export class TelegramChannel implements Channel {
     };
 
     await ctx.replyWithChatAction("typing");
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction("typing").catch(() => {});
+    }, 4000);
 
     try {
       const response = await handler(incoming);
@@ -140,6 +143,8 @@ export class TelegramChannel implements Channel {
         userId: String(userId),
       });
       await ctx.reply("Something went wrong. Please try again.");
+    } finally {
+      clearInterval(typingInterval);
     }
   }
 
