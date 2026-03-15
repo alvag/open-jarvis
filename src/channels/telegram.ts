@@ -3,6 +3,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
 import { log } from "../logger.js";
+import { EXIT_RESTART, EXIT_UPDATE } from "../exit-codes.js";
+import { getPendingRestart, scheduleRestart } from "../restart-signal.js";
 
 const UPLOADS_DIR = "./data/uploads";
 mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -18,6 +20,23 @@ export class TelegramChannel implements Channel {
   }
 
   async start(handler: MessageHandler): Promise<void> {
+    // Direct commands (bypass agent loop)
+    this.bot.command("restart", async (ctx) => {
+      const userId = ctx.from!.id;
+      if (!this.allowedUserIds.has(userId)) return;
+      await ctx.reply("Reiniciando...");
+      scheduleRestart(EXIT_RESTART);
+      setTimeout(() => process.exit(EXIT_RESTART), 500);
+    });
+
+    this.bot.command("update", async (ctx) => {
+      const userId = ctx.from!.id;
+      if (!this.allowedUserIds.has(userId)) return;
+      await ctx.reply("Actualizando y reiniciando...");
+      scheduleRestart(EXIT_UPDATE);
+      setTimeout(() => process.exit(EXIT_UPDATE), 500);
+    });
+
     // Text messages
     this.bot.on("message:text", async (ctx) => {
       await this.handleIncoming(ctx, ctx.message.text, [], handler);
@@ -145,6 +164,25 @@ export class TelegramChannel implements Channel {
       await ctx.reply("Something went wrong. Please try again.");
     } finally {
       clearInterval(typingInterval);
+    }
+
+    // Check if a restart was scheduled by a tool during this request
+    const pendingExit = getPendingRestart();
+    if (pendingExit !== null) {
+      log("info", "telegram", `Pending restart detected (exit code ${pendingExit}), exiting...`);
+      setTimeout(() => process.exit(pendingExit), 500);
+    }
+  }
+
+  async broadcast(text: string): Promise<void> {
+    for (const userId of this.allowedUserIds) {
+      try {
+        await this.bot.api.sendMessage(userId, text);
+      } catch (err) {
+        log("warn", "telegram", `Failed to send broadcast to ${userId}`, {
+          error: (err as Error).message,
+        });
+      }
     }
   }
 
