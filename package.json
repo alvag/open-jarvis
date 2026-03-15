@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "node --import tsx src/index.ts",
+    "start": "node --import tsx src/supervisor.ts",
+    "start:bg": "nohup node --import tsx src/supervisor.ts > /tmp/jarvis.log 2>&1 &",
+    "start:bot": "node --import tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },

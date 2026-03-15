@@ -23,6 +23,7 @@ import gwsCalendarTool from "./tools/built-in/gws-calendar.js";
 import gwsSheetsTool from "./tools/built-in/gws-sheets.js";
 import tableImageTool from "./tools/built-in/table-image.js";
 import bitbucketPrsTool from "./tools/built-in/bitbucket-prs.js";
+import restartServerTool from "./tools/built-in/restart-server.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -57,6 +58,7 @@ async function main() {
   toolRegistry.register(searchMemoriesTool);
   toolRegistry.register(proposeTool);
   toolRegistry.register(tableImageTool);
+  toolRegistry.register(restartServerTool);
 
   // Google Workspace tools (conditional)
   if (config.google.enabled.drive) {
@@ -129,6 +131,7 @@ async function main() {
   });
 
   log("info", "startup", "Jarvis is online. Listening for Telegram messages...");
+  await telegram.broadcast("Jarvis está online ✅");
 
   // Graceful shutdown
   const shutdown = () => {
