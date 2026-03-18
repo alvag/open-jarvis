@@ -1,10 +1,14 @@
 {
+  "mode": "yolo",
+  "granularity": "coarse",
   "model_profile": "balanced",
   "commit_docs": true,
   "search_gitignored": false,
   "branching_strategy": "milestone",
   "phase_branch_template": "gsd/phase-{phase}-{slug}",
   "milestone_branch_template": "gsd/{milestone}-{slug}",
+  "parallelization": true,
+  "brave_search": false,
   "workflow": {
     "research": true,
     "plan_check": true,
@@ -19,7 +23,5 @@
   },
   "hooks": {
     "context_warnings": true
-  },
-  "parallelization": true,
-  "brave_search": false
+  }
 }
