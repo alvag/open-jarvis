@@ -28,7 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. User can send a URL to Jarvis and receive the extracted text content of that page
   3. JS-rendered pages (SPAs, dynamically loaded content) return readable content, not empty HTML
   4. Scraped web content is framed as untrusted so Jarvis does not execute instructions embedded in page content
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Install SDKs, add config blocks (tavily/firecrawl), document env vars, add soul.md trust rule
+- [ ] 01-02-PLAN.md — Implement web-search.ts and web-scrape.ts tools, wire conditional registration in index.ts
 
 ### Phase 2: Security + Shell Execution
 **Goal**: Jarvis can execute shell commands and local scripts on the user's Mac with defense-in-depth safety controls that survive bot restarts
@@ -72,7 +76,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Web Access | 0/TBD | Not started | - |
+| 1. Web Access | 0/2 | Planning done | - |
 | 2. Security + Shell Execution | 0/TBD | Not started | - |
 | 3. Scheduled Tasks | 0/TBD | Not started | - |
 | 4. Supervisor Improvements | 0/TBD | Not started | - |
