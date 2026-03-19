@@ -4,6 +4,26 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-19
+
+### Added
+- **Tool manifest** (`src/tools/manifest-loader.ts`): configuración declarativa JSON (`tool_manifest.json`) para activar/desactivar tools y MCP servers, con sustitución de `${VAR}` en campos env/headers
+- **MCP config loader** (`src/tools/mcp-config-loader.ts`): parsea `mcp_config.json` con validación de entradas y soporte para transporte stdio y StreamableHTTP
+- **MCP client** (`src/mcp/mcp-client.ts`): wrapper del SDK `@modelcontextprotocol/sdk` con soporte dual stdio/HTTP, detección de crash via transport callbacks, y lifecycle management
+- **MCP tool adapter** (`src/mcp/mcp-tool-adapter.ts`): convierte tools de MCP servers a objetos `Tool` del registry con prefijo `serverName__toolName` para evitar colisiones, guard de servidor muerto (`isAlive`), y normalización de resultados
+- **McpManager** (`src/mcp/mcp-manager.ts`): orquestador que conecta múltiples MCP servers en paralelo via `Promise.allSettled` con timeout de 10s por servidor
+- **SEC-01 — Truncamiento de descripciones**: descripciones de tools MCP se truncan a 500 caracteres para limitar superficie de tool poisoning
+- **SEC-02 — Trust framing**: sección "External Tools Notice" en el system prompt cuando hay tools MCP activos, indicando al LLM que trate descripciones y resultados como no confiables
+- **SEC-05 — Tool count logging**: log de conteo por fuente al startup (`X built-in, Y manifest, Z MCP = N total`) con warning si el total excede 30
+- Archivos de ejemplo (`tool_manifest.json.example`, `mcp_config.json.example`) documentan el schema de configuración
+
+### Changed
+- `src/index.ts`: loop inline de conexión MCP reemplazado por `McpManager.connectAll()` — más limpio y con startup paralelo
+- `src/agent/context-builder.ts`: `buildSystemPrompt` acepta parámetro `hasMcpTools` para inyección condicional del trust warning
+- `src/agent/agent.ts`: propaga `hasMcpTools` desde `AgentContext` al context builder
+- `src/types.ts`: `AgentContext` extiende con campo opcional `hasMcpTools`
+- Dependencia agregada: `@modelcontextprotocol/sdk@^1.27.1`
+
 ## [1.0.0] - 2026-03-19
 
 ### Added
