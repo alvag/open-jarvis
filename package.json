@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^4.16.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@napi-rs/canvas": "^0.1.96",
     "@tavily/core": "^0.7.2",
     "better-sqlite3": "^12.6.2",
