@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
-status: ready_to_plan
-stopped_at: roadmap_created
-last_updated: "2026-03-19"
-last_activity: "2026-03-19 — Roadmap created, 3 phases defined (5-7), 17/17 requirements mapped"
+status: planning
+stopped_at: Phase 5 context gathered
+last_updated: "2026-03-19T10:55:12.056Z"
+last_activity: 2026-03-19 — Roadmap created for v1.1
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 5
+  total_plans: 0
   completed_plans: 0
   percent: 0
 ---
@@ -35,6 +35,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0 (v1.1)
 - Average duration: —
 - Total execution time: —
@@ -50,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 ### Decisions
 
 Recent decisions affecting v1.1 work:
+
 - Build order: manifest → client+adapter → manager+wiring (each phase independently testable)
 - HTTP transport (StreamableHTTP) included in v1.1 scope alongside stdio
 - Security hardening embedded in the phase that creates the surface area (not retrofitted)
@@ -68,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19
-Stopped at: Roadmap created — ready to plan Phase 5
-Resume file: None
+Last session: 2026-03-19T10:55:12.053Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-tool-manifest/05-CONTEXT.md
