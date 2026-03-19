@@ -1,0 +1,91 @@
+# Requirements: Jarvis v1.1
+
+**Defined:** 2026-03-19
+**Core Value:** Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma autónoma sin comprometer la seguridad del sistema donde corre.
+
+## v1.1 Requirements
+
+Requirements for MCP client integration and tool manifest. Each maps to roadmap phases.
+
+### Manifest
+
+- [ ] **MNFST-01**: User can declare MCP servers in a JSON manifest file with type, command, args, env, and enabled fields
+- [ ] **MNFST-02**: User can use `${VAR}` syntax in manifest env fields to reference environment variables without exposing secrets
+- [ ] **MNFST-03**: Jarvis loads manifest at startup and only connects to servers marked `enabled: true`
+
+### MCP Client
+
+- [ ] **MCP-01**: Jarvis can connect to local MCP servers via stdio transport (spawns child process)
+- [ ] **MCP-02**: Jarvis can connect to remote MCP servers via StreamableHTTP transport
+- [ ] **MCP-03**: Jarvis discovers available tools from connected MCP servers via `listTools()`
+- [ ] **MCP-04**: MCP tools are registered with namespace prefix `{serverName}__{toolName}` to prevent collisions
+- [ ] **MCP-05**: MCP tools are adapted to the existing `Tool` interface and registered in `ToolRegistry` transparently
+- [ ] **MCP-06**: Agent can execute MCP tools via `callTool()` with result normalization to existing format
+- [ ] **MCP-07**: Failed MCP server connections at startup log warning and continue (don't crash Jarvis)
+- [ ] **MCP-08**: MCP server disconnections during runtime return clear error to LLM (not crash)
+- [ ] **MCP-09**: All MCP connections are closed gracefully during shutdown
+
+### Security & Resilience
+
+- [ ] **SEC-01**: MCP tool descriptions are truncated at 500 chars to limit poisoning surface
+- [ ] **SEC-02**: System prompt frames MCP tool descriptions as untrusted external content
+- [ ] **SEC-03**: Tool name collision validation prevents MCP tools from shadowing custom tools
+- [ ] **SEC-04**: stdio child process crashes are isolated and don't propagate to agent loop
+- [ ] **SEC-05**: Active registered tools limited to ≤30 with startup token count logging
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### MCP Extensions
+
+- **MCPX-01**: Per-tool HITL approval gate for MCP tools with destructive capability
+- **MCPX-02**: `allowedTools` filter per server to suppress irrelevant tools
+- **MCPX-03**: `tools/list_changed` notification handling with cache invalidation
+- **MCPX-04**: Tool hash pinning to detect server tool list changes between sessions
+- **MCPX-05**: Lazy/on-demand MCP server connections (connect on first tool call)
+- **MCPX-06**: MCP resources and prompts support (not just tools)
+- **MCPX-07**: Telegram notification listing connected/failed servers at startup
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| MCP server auto-discovery | No standard mechanism; fragile; explicit manifest is correct |
+| Dynamic manifest reload without restart | Stateful connections make hot-reload complex and error-prone |
+| Migrating custom tools to MCP servers | Custom tools have deep integration (approval gate, ToolContext, SQLite) that MCP cannot replicate |
+| MCP server mode (exposing Jarvis tools) | Not needed; Jarvis is a consumer, not a provider |
+| SSE transport | Deprecated in MCP spec; StreamableHTTP replaces it |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MNFST-01 | — | Pending |
+| MNFST-02 | — | Pending |
+| MNFST-03 | — | Pending |
+| MCP-01 | — | Pending |
+| MCP-02 | — | Pending |
+| MCP-03 | — | Pending |
+| MCP-04 | — | Pending |
+| MCP-05 | — | Pending |
+| MCP-06 | — | Pending |
+| MCP-07 | — | Pending |
+| MCP-08 | — | Pending |
+| MCP-09 | — | Pending |
+| SEC-01 | — | Pending |
+| SEC-02 | — | Pending |
+| SEC-03 | — | Pending |
+| SEC-04 | — | Pending |
+| SEC-05 | — | Pending |
+
+**Coverage:**
+- v1.1 requirements: 17 total
+- Mapped to phases: 0
+- Unmapped: 17 ⚠️
+
+---
+*Requirements defined: 2026-03-19*
+*Last updated: 2026-03-19 after initial definition*
