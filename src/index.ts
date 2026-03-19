@@ -48,8 +48,7 @@ import type { SchedulerDeps } from "./scheduler/types.js";
 import { getPendingRestart } from "./restart-signal.js";
 import { loadToolManifest, setManifestApprovalGate, setManifestSendApproval, setManifestSendResult } from "./tools/manifest-loader.js";
 import { loadMcpConfig } from "./tools/mcp-config-loader.js";
-import { McpClient } from "./mcp/mcp-client.js";
-import { adaptMcpTools } from "./mcp/mcp-tool-adapter.js";
+import { McpManager } from "./mcp/mcp-manager.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -131,56 +130,28 @@ async function main() {
   toolRegistry.register(manageScheduledTaskTool);
   log("info", "startup", "Scheduler tools enabled (create, list, delete, manage)");
 
+  const builtInCount = toolRegistry.getDefinitions().length;
+
   // Load manifest tools (after built-ins — built-ins have collision priority)
   loadToolManifest(toolRegistry);
 
-  // Connect MCP servers and register their tools
-  const mcpServerConfigs = loadMcpConfig();
-  const mcpClients: McpClient[] = [];
+  const manifestCount = toolRegistry.getDefinitions().length - builtInCount;
 
-  const CONNECT_TIMEOUT_MS = 10_000;
+  // Connect MCP servers via McpManager (parallel startup)
+  const mcpConfigs = loadMcpConfig();
+  const mcpManager = new McpManager(mcpConfigs);
+  const mcpSummary = await mcpManager.connectAll(toolRegistry);
 
-  for (const config of mcpServerConfigs) {
-    const client = new McpClient(config);
-    try {
-      // 10-second connection timeout (covers npx npm-install on first run)
-      await Promise.race([
-        client.connect(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT_MS}ms`)), CONNECT_TIMEOUT_MS)
-        ),
-      ]);
+  // SEC-05: Per-source tool count logging
+  const totalCount = toolRegistry.getDefinitions().length;
+  log("info", "startup", `Tools registered: ${builtInCount} built-in, ${manifestCount} manifest, ${mcpSummary.toolsRegistered} MCP = ${totalCount} total`);
 
-      // Discover and register tools
-      const { tools } = await client.listTools();
-      const adapted = adaptMcpTools(tools, client, config.name);
-      let registered = 0;
-
-      for (const tool of adapted) {
-        try {
-          toolRegistry.register(tool);
-          registered++;
-        } catch (err) {
-          // ToolRegistry.register() throws on duplicate name — SEC-03
-          log("error", "startup", `MCP tool name collision: ${tool.definition.name} — skipping (built-in has priority)`, {
-            server: config.name,
-            error: (err as Error).message,
-          });
-        }
-      }
-
-      mcpClients.push(client);
-      log("info", "startup", `MCP server connected: ${config.name}`, {
-        tools: registered,
-        total: tools.length,
-      });
-    } catch (err) {
-      // MCP-07: Failed connection at startup — log warning and continue
-      log("warn", "startup", `MCP server failed to connect: ${config.name} — skipping`, {
-        error: (err as Error).message,
-      });
-    }
+  if (totalCount > 30) {
+    log("warn", "startup", `Tool count exceeds 30 (${totalCount}) — context window budget may be impacted`);
   }
+
+  // Derive hasMcpTools from actual registered tools (not config count)
+  const hasMcpTools = mcpSummary.toolsRegistered > 0;
 
   // 4. Initialize LLM with model tiers
   const llm = new OpenRouterProvider(
@@ -238,6 +209,7 @@ async function main() {
           sessionId,
           userMessage: msg.text,
           attachments: msg.attachments,
+          hasMcpTools,
         },
         llm,
         toolRegistry,
@@ -365,8 +337,7 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
     stopScheduler();
 
     // 3b. Disconnect MCP servers
-    await Promise.allSettled(mcpClients.map((c) => c.disconnect()));
-    log("info", "shutdown", "MCP connections closed");
+    await mcpManager.disconnectAll();
 
     // 4. Wait for in-flight agent runs (up to 15 seconds)
     if (inFlightCount > 0) {
