@@ -46,6 +46,8 @@ import {
 } from "./scheduler/scheduler-manager.js";
 import type { SchedulerDeps } from "./scheduler/types.js";
 import { getPendingRestart } from "./restart-signal.js";
+import { loadToolManifest, setManifestApprovalGate, setManifestSendApproval, setManifestSendResult } from "./tools/manifest-loader.js";
+import { loadMcpConfig } from "./tools/mcp-config-loader.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -127,6 +129,17 @@ async function main() {
   toolRegistry.register(manageScheduledTaskTool);
   log("info", "startup", "Scheduler tools enabled (create, list, delete, manage)");
 
+  // Load manifest tools (after built-ins — built-ins have collision priority)
+  loadToolManifest(toolRegistry);
+
+  // Load MCP server configs (connection happens in Phase 6)
+  const mcpServerConfigs = loadMcpConfig();
+  if (mcpServerConfigs.length > 0) {
+    log("info", "startup", `Loaded ${mcpServerConfigs.length} MCP server config(s)`, {
+      servers: mcpServerConfigs.map(s => s.name),
+    });
+  }
+
   // 4. Initialize LLM with model tiers
   const llm = new OpenRouterProvider(
     config.openrouter.apiKey,
@@ -149,6 +162,15 @@ async function main() {
     telegram.sendApprovalMessage(userId, text, approvalId),
   );
   setSendResult((userId, text) =>
+    telegram.sendMessage(userId, text),
+  );
+
+  // Wire approval gate for manifest tool approvals (same gate as execute_command)
+  setManifestApprovalGate(approvalGate);
+  setManifestSendApproval((userId, text, approvalId) =>
+    telegram.sendApprovalMessage(userId, text, approvalId),
+  );
+  setManifestSendResult((userId, text) =>
     telegram.sendMessage(userId, text),
   );
 

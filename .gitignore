@@ -5,3 +5,5 @@ data/
 *.db
 
 .DS_Store
+tool_manifest.json
+mcp_config.json
