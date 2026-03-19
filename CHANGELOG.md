@@ -4,6 +4,31 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-19
+
+### Added
+- **Web search** (`src/tools/built-in/web-search.ts`): búsqueda en internet via Tavily API con resultados resumidos
+- **Web scraping** (`src/tools/built-in/web-scrape.ts`): extracción de contenido de URLs via Firecrawl API, incluyendo páginas renderizadas con JS
+- **Frontera de confianza para contenido web**: todo contenido web se envuelve en delimitadores `[WEB CONTENT - UNTRUSTED]` para prevenir prompt injection
+- **Shell execution** (`src/tools/built-in/execute-command.ts`): ejecución de comandos shell y scripts (.sh, .py, .ts) via `execFile` con `shell:false`
+- **Clasificador de comandos** (`src/security/command-classifier.ts`): tres niveles de seguridad (blocked/risky/safe) con fail-closed por defecto
+- **Approval gate** (`src/security/approval-gate.ts`): aprobación humana via Telegram inline keyboard para comandos riesgosos, persistente en SQLite
+- **Scheduler** (`src/scheduler/scheduler-manager.ts`): motor de tareas programadas basado en croner con persistencia SQLite
+- **Scheduler tools** (`src/scheduler/scheduler-tools.ts`): 4 herramientas del agente para crear, listar, gestionar y eliminar tareas programadas
+- **Morning briefing**: resumen matutino automático combinando Calendar, Gmail, PRs y búsqueda web
+- **PR monitor** (`src/scheduler/pr-monitor.ts`): monitoreo periódico de PRs en Bitbucket con notificaciones de cambios via Telegram
+- **Heartbeat watchdog**: supervisor detecta bot colgado (no solo crasheado) via IPC heartbeat cada 10s con timeout de 30s
+- **Git auto-update**: supervisor hace polling cada 5 minutos y aplica actualizaciones automáticamente (incluyendo `npm install` si `package.json` cambió)
+- **Supervisor logging**: todos los eventos del ciclo de vida se escriben en `data/supervisor.log` con timestamp, nivel y categoría
+- **Telegram notifications en supervisor**: notificaciones directas via Telegram API para hang detection, crashes y auto-updates
+- **Graceful shutdown mejorado**: espera hasta 15 segundos para operaciones in-flight antes de cerrar, con tracking de agentes activos via contador
+
+### Changed
+- Supervisor reescrito completamente (`src/supervisor.ts`): de 60 líneas a 296 líneas con logging, watchdog, auto-update y notificaciones
+- `src/index.ts` extendido con heartbeat IPC, in-flight tracking, y secuencia de shutdown ordenada
+- Timeout de shutdown aumentado de 3s a 15s para acomodar llamadas LLM en progreso
+- Migración SQLite v4 (pending_approvals) y v5 (scheduled_tasks, task_runs)
+
 ## [0.3.0] - 2026-03-15
 
 ### Added
