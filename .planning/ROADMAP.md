@@ -53,8 +53,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — McpClient class wrapping SDK Client + transports with lifecycle and error handling
-- [ ] 06-02-PLAN.md — McpToolAdapter with namespace prefix, result normalization, and index.ts wiring
+- [x] 06-01-PLAN.md — McpClient class wrapping SDK Client + transports with lifecycle and error handling
+- [x] 06-02-PLAN.md — McpToolAdapter with namespace prefix, result normalization, and index.ts wiring
 
 ### Phase 7: MCP Integration
 **Goal**: All enabled MCP servers start in parallel at boot, their tools are available to the agent, and security guardrails prevent tool poisoning and context bloat
@@ -65,11 +65,11 @@ Plans:
   2. MCP tool descriptions are capped at 500 characters; the system prompt explicitly frames them as untrusted external content
   3. Startup logs show total registered tool count; if the count exceeds 30, a warning is emitted
   4. The agent can invoke an MCP tool in a real conversation and the result flows back correctly through the existing agent loop
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: Implement `McpManager` with `Promise.allSettled` startup, `callTool` routing, and `disconnectAll` shutdown
-- [ ] 07-02: Wire manifest + manager into `index.ts`; add description truncation + system-prompt framing to `context-builder.ts`; add startup token count logging
+- [ ] 07-01-PLAN.md — McpManager class + description truncation in mcp-tool-adapter
+- [ ] 07-02-PLAN.md — Wire McpManager into index.ts, trust framing in context-builder, tool count logging
 
 ## Progress
 
@@ -80,5 +80,5 @@ Plans:
 | 3. Scheduled Tasks | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Supervisor Improvements | v1.0 | 3/3 | Complete | 2026-03-19 |
 | 5. Tool Manifest | v1.1 | 1/1 | Complete | 2026-03-19 |
-| 6. MCP Client Layer | 2/2 | Complete   | 2026-03-19 | - |
+| 6. MCP Client Layer | v1.1 | 2/2 | Complete | 2026-03-19 |
 | 7. MCP Integration | v1.1 | 0/2 | Not started | - |
