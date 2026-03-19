@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Jarvis es un agente personal de IA que corre localmente en Mac y usa Telegram como interfaz. Piensa mediante LLMs (OpenRouter con routing por complejidad), ejecuta herramientas, y recuerda información de forma persistente. Puede buscar en la web, ejecutar comandos de shell con seguridad de tres capas, operar de forma autónoma con tareas programadas, y se auto-actualiza desde git.
+Jarvis es un agente personal de IA que corre localmente en Mac y usa Telegram como interfaz. Piensa mediante LLMs (OpenRouter con routing por complejidad), ejecuta herramientas, y recuerda información de forma persistente. Puede buscar en la web, ejecutar comandos de shell con seguridad de tres capas, operar de forma autónoma con tareas programadas, consumir herramientas de MCP servers externos, y se auto-actualiza desde git.
 
 ## Core Value
 
@@ -40,21 +40,10 @@ Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma aut�
 - ✓ Supervisor logs persistentes a data/supervisor.log — v1.0
 - ✓ Restart/update desde Telegram (/restart, /update) y via tool del agente — existing
 
-### Active
-
-- ✓ Soporte MCP client — Jarvis consume tools de MCP servers externos — v1.1 Phase 06
-- ✓ Tool manifest declarativo — archivo de configuración para tools y MCP servers — v1.1 Phase 05
-- ✓ Enfoque híbrido — custom tools + MCP tools coexisten en el agent loop — v1.1 Phase 06
-- ✓ MCP integration segura — description truncation (SEC-01), trust framing en system prompt (SEC-02), tool count logging con >30 warning (SEC-05) — v1.1 Phase 07
-
-## Current Milestone: v1.1 MCP Tools & Tool Manifest
-
-**Goal:** Permitir que Jarvis consuma herramientas de MCP servers externos mediante un manifest declarativo, manteniendo las custom tools existentes en un enfoque híbrido.
-
-**Target features:**
-- MCP client integration (conectar a MCP servers, descubrir y ejecutar tools)
-- Tool manifest declarativo (JSON/YAML config para activar/desactivar tools y MCP servers)
-- Enfoque híbrido (custom tools + MCP tools unificados en el agent loop)
+- ✓ Soporte MCP client — Jarvis consume tools de MCP servers externos — v1.1
+- ✓ Tool manifest declarativo — archivo de configuración para tools y MCP servers — v1.1
+- ✓ Enfoque híbrido — custom tools + MCP tools coexisten en el agent loop — v1.1
+- ✓ MCP integration segura — description truncation, trust framing, tool count logging — v1.1
 
 ### Out of Scope
 
@@ -70,11 +59,11 @@ Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma aut�
 
 ## Context
 
-Shipped v1.0 con 5,295 LOC TypeScript. 56 archivos modificados en 10 días de desarrollo.
+Shipped v1.1 con 6,256 LOC TypeScript. 38 archivos modificados en v1.1 (+5,817 / -82 líneas).
 
-Stack: Node.js + TypeScript (ES modules), grammy (Telegram), OpenRouter (LLM), better-sqlite3 (WAL mode), croner (scheduler), Tavily/Firecrawl (web).
+Stack: Node.js + TypeScript (ES modules), grammy (Telegram), OpenRouter (LLM), better-sqlite3 (WAL mode), croner (scheduler), Tavily/Firecrawl (web), @modelcontextprotocol/sdk (MCP).
 
-Arquitectura modular por capas: channels → agent → LLM → tools → memory. Tools pluggables via registry pattern. Servicios externos habilitados por feature flags via env vars.
+Arquitectura modular por capas: channels → agent → LLM → tools → memory. Tools pluggables via registry pattern. MCP tools integrados via manifest declarativo con namespace prefixing y security hardening. Servicios externos habilitados por feature flags via env vars.
 
 Supervisor completo: crash recovery con backoff exponencial, heartbeat watchdog IPC, auto-update via git polling, lifecycle logging persistente, graceful shutdown con in-flight tracking.
 
@@ -98,6 +87,10 @@ Supervisor completo: crash recovery con backoff exponencial, heartbeat watchdog 
 | execFile shell:false | Prevents shell injection even if metacharacter check is bypassed | ✓ Good — defense in depth at OS level |
 | SQLite for approval persistence | In-memory Map loses state on crash, SQLite survives restarts | ✓ Good — SEC-03 verified: pending approvals recovered after restart |
 | Direct Telegram API in supervisor (not grammy) | Supervisor must notify independently of bot process state | ✓ Good — notifications work even when bot is hung/crashed |
+| JSON manifest sin YAML | Elimina dependencia extra, compatible con claude_desktop_config.json | ✓ Good — simple, familiar format |
+| serverName__toolName namespace | Previene que MCP tools sobrescriban custom tools | ✓ Good — collision detection at startup |
+| No auto-reconnect en v1.1 | Aceptable para uso personal; server caído requiere restart | ✓ Good — simplifica lifecycle management |
+| Security embedded en phase de creación | Hardening se construye donde se crea la superficie de ataque | ✓ Good — SEC-01/02/05 integrados naturalmente |
 
 ---
-*Last updated: 2026-03-19 after Phase 07 (mcp-integration) completed*
+*Last updated: 2026-03-19 after v1.1 milestone completed*
