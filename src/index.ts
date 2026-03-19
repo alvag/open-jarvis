@@ -48,6 +48,8 @@ import type { SchedulerDeps } from "./scheduler/types.js";
 import { getPendingRestart } from "./restart-signal.js";
 import { loadToolManifest, setManifestApprovalGate, setManifestSendApproval, setManifestSendResult } from "./tools/manifest-loader.js";
 import { loadMcpConfig } from "./tools/mcp-config-loader.js";
+import { McpClient } from "./mcp/mcp-client.js";
+import { adaptMcpTools } from "./mcp/mcp-tool-adapter.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -132,12 +134,52 @@ async function main() {
   // Load manifest tools (after built-ins — built-ins have collision priority)
   loadToolManifest(toolRegistry);
 
-  // Load MCP server configs (connection happens in Phase 6)
+  // Connect MCP servers and register their tools
   const mcpServerConfigs = loadMcpConfig();
-  if (mcpServerConfigs.length > 0) {
-    log("info", "startup", `Loaded ${mcpServerConfigs.length} MCP server config(s)`, {
-      servers: mcpServerConfigs.map(s => s.name),
-    });
+  const mcpClients: McpClient[] = [];
+
+  const CONNECT_TIMEOUT_MS = 10_000;
+
+  for (const config of mcpServerConfigs) {
+    const client = new McpClient(config);
+    try {
+      // 10-second connection timeout (covers npx npm-install on first run)
+      await Promise.race([
+        client.connect(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Connection timeout after ${CONNECT_TIMEOUT_MS}ms`)), CONNECT_TIMEOUT_MS)
+        ),
+      ]);
+
+      // Discover and register tools
+      const { tools } = await client.listTools();
+      const adapted = adaptMcpTools(tools, client, config.name);
+      let registered = 0;
+
+      for (const tool of adapted) {
+        try {
+          toolRegistry.register(tool);
+          registered++;
+        } catch (err) {
+          // ToolRegistry.register() throws on duplicate name — SEC-03
+          log("error", "startup", `MCP tool name collision: ${tool.definition.name} — skipping (built-in has priority)`, {
+            server: config.name,
+            error: (err as Error).message,
+          });
+        }
+      }
+
+      mcpClients.push(client);
+      log("info", "startup", `MCP server connected: ${config.name}`, {
+        tools: registered,
+        total: tools.length,
+      });
+    } catch (err) {
+      // MCP-07: Failed connection at startup — log warning and continue
+      log("warn", "startup", `MCP server failed to connect: ${config.name} — skipping`, {
+        error: (err as Error).message,
+      });
+    }
   }
 
   // 4. Initialize LLM with model tiers
@@ -321,6 +363,10 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
 
     // 3. Stop scheduler (no new tasks will fire)
     stopScheduler();
+
+    // 3b. Disconnect MCP servers
+    await Promise.allSettled(mcpClients.map((c) => c.disconnect()));
+    log("info", "shutdown", "MCP connections closed");
 
     // 4. Wait for in-flight agent runs (up to 15 seconds)
     if (inFlightCount > 0) {
