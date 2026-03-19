@@ -39,7 +39,7 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 05-01-PLAN.md — Manifest loader + MCP config loader + index.ts wiring
+- [x] 05-01-PLAN.md — Manifest loader + MCP config loader + index.ts wiring
 
 ### Phase 6: MCP Client Layer
 **Goal**: Jarvis can connect to a single MCP server (stdio or HTTP), discover its tools, and execute them — with crashes isolated and tool names namespaced to prevent collisions
@@ -50,11 +50,11 @@ Plans:
   2. All MCP tool names carry the `{serverName}__{toolName}` prefix; a name that would collide with a custom tool causes a startup error, not silent overwrite
   3. An MCP server child process that crashes mid-session returns a structured error to the LLM instead of crashing Jarvis or the session
   4. All MCP connections are closed cleanly when Jarvis shuts down; no zombie child processes remain
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: Implement `McpClient` wrapping SDK `Client` + transports with lifecycle and error handling
-- [ ] 06-02: Implement `McpToolAdapter` with namespace prefix, schema normalization, and `ToolRegistry` integration
+- [ ] 06-01-PLAN.md — McpClient class wrapping SDK Client + transports with lifecycle and error handling
+- [ ] 06-02-PLAN.md — McpToolAdapter with namespace prefix, result normalization, and index.ts wiring
 
 ### Phase 7: MCP Integration
 **Goal**: All enabled MCP servers start in parallel at boot, their tools are available to the agent, and security guardrails prevent tool poisoning and context bloat
@@ -79,6 +79,6 @@ Plans:
 | 2. Security + Shell Execution | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 3. Scheduled Tasks | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Supervisor Improvements | v1.0 | 3/3 | Complete | 2026-03-19 |
-| 5. Tool Manifest | 1/1 | Complete   | 2026-03-19 | - |
-| 6. MCP Client Layer | v1.1 | 0/2 | Not started | - |
+| 5. Tool Manifest | v1.1 | 1/1 | Complete | 2026-03-19 |
+| 6. MCP Client Layer | v1.1 | 0/2 | Planning complete | - |
 | 7. MCP Integration | v1.1 | 0/2 | Not started | - |
