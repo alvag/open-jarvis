@@ -13,6 +13,14 @@ import type { McpClient } from "./mcp-client.js";
 /** Shape of a single tool returned by McpClient.listTools() */
 type McpToolDef = Awaited<ReturnType<McpClient["listTools"]>>["tools"][number];
 
+// SEC-01: Cap description length to limit tool-poisoning surface area
+const MAX_DESC_LEN = 500;
+
+function truncateDescription(raw: string | undefined, toolName: string, serverName: string): string {
+  const base = raw ?? `MCP tool ${toolName} from ${serverName}`;
+  return base.length <= MAX_DESC_LEN ? base : base.slice(0, MAX_DESC_LEN - 3) + "...";
+}
+
 /** Normalized MCP content item (text variant) */
 type McpContentItem = { type: string; text?: string; [key: string]: unknown };
 
@@ -42,8 +50,7 @@ export function adaptMcpTools(
     const tool: Tool = {
       definition: {
         name: prefixedName,
-        description:
-          mcpTool.description ?? `MCP tool ${mcpTool.name} from ${serverName}`,
+        description: truncateDescription(mcpTool.description, mcpTool.name, serverName),
         // Cast required: MCP inputSchema.properties is Record<string, object>
         // while project JsonSchema.properties is Record<string, {type, description, enum?}>
         // They are compatible at runtime for LLM consumption (Pitfall 2 from RESEARCH.md)
