@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
 status: unknown
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-19T12:23:58.858Z"
+stopped_at: Completed 06-01-PLAN.md — McpClient implementation
+last_updated: "2026-03-19T12:57:00.947Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 3
+  completed_plans: 2
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma autónoma sin comprometer la seguridad del sistema donde corre.
-**Current focus:** Phase 05 — tool-manifest
+**Current focus:** Phase 06 — mcp-client-layer
 
 ## Current Position
 
-Phase: 05 (tool-manifest) — EXECUTING
-Plan: 1 of 1
+Phase: 06 (mcp-client-layer) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Plan: 1 of 1
 ## Accumulated Context
 
 | Phase 05-tool-manifest P01 | 4min | 3 tasks | 7 files |
+| Phase 06 P01 | 2min | 2 tasks | 3 files |
 
 ### Decisions
 
@@ -57,6 +58,9 @@ Recent decisions affecting v1.1 work:
 - [Phase 05-tool-manifest]: Built-in tools have collision priority: manifest tool skipped if name already registered in ToolRegistry
 - [Phase 05-tool-manifest]: MCP servers only parsed in Phase 5; actual connections deferred to Phase 6
 - [Phase 05-tool-manifest]: ${VAR} substitution applies only to env/headers fields in mcp_config.json, not command/args
+- [Phase 06]: onclose callback checks isAlive before logging to suppress spurious warnings on clean disconnect
+- [Phase 06]: Connection timeout applied externally via Promise.race in index.ts, not inside McpClient
+- [Phase 06]: process.env merged first in stdio env to ensure full PATH/NODE_PATH inheritance for npx-based servers
 
 ### Pending Todos
 
@@ -69,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T12:23:58.855Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-mcp-client-layer/06-CONTEXT.md
+Last session: 2026-03-19T12:57:00.945Z
+Stopped at: Completed 06-01-PLAN.md — McpClient implementation
+Resume file: None
