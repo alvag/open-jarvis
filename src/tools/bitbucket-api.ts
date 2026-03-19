@@ -76,6 +76,23 @@ export interface BitbucketComment {
   parent?: { id: number };
 }
 
+export interface BitbucketActivityItem {
+  update?: {
+    state: string;
+    date: string;
+    author: { display_name: string };
+  };
+  approval?: {
+    date: string;
+    user: { display_name: string };
+  };
+  comment?: {
+    content: { raw: string };
+    user: { display_name: string };
+    created_on: string;
+  };
+}
+
 export class BitbucketClient {
   async listPRs(
     workspace?: string,
@@ -129,5 +146,18 @@ export class BitbucketClient {
       `/repositories/${ws}/${repo}/pullrequests/${prId}/comments`,
     );
     return res.json() as Promise<{ values: BitbucketComment[] }>;
+  }
+
+  async getPRActivity(
+    prId: string,
+    workspace?: string,
+    repoSlug?: string,
+  ): Promise<{ values: BitbucketActivityItem[] }> {
+    const ws = resolveWorkspace(workspace);
+    const repo = resolveRepo(repoSlug);
+    const res = await request(
+      `/repositories/${ws}/${repo}/pullrequests/${prId}/activity`,
+    );
+    return res.json() as Promise<{ values: BitbucketActivityItem[] }>;
   }
 }

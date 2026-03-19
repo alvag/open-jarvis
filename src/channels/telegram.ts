@@ -1,10 +1,11 @@
-import { Bot, InputFile, type Context } from "grammy";
+import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
 import { log } from "../logger.js";
 import { EXIT_RESTART, EXIT_UPDATE } from "../exit-codes.js";
 import { getPendingRestart, scheduleRestart } from "../restart-signal.js";
+import type { ApprovalGate } from "../security/approval-gate.js";
 
 const UPLOADS_DIR = "./data/uploads";
 mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -13,10 +14,33 @@ export class TelegramChannel implements Channel {
   name = "telegram";
   private bot: Bot;
   private allowedUserIds: Set<number>;
+  private approvalGate: ApprovalGate | null = null;
 
   constructor(token: string, allowedUserIds: number[]) {
     this.bot = new Bot(token);
     this.allowedUserIds = new Set(allowedUserIds);
+  }
+
+  setApprovalGate(gate: ApprovalGate): void {
+    this.approvalGate = gate;
+  }
+
+  async sendApprovalMessage(userId: string, text: string, approvalId: string): Promise<void> {
+    const numericUserId = parseInt(userId, 10);
+    const kb = new InlineKeyboard()
+      .text("Aprobar", `approve:${approvalId}`)
+      .text("Denegar", `deny:${approvalId}`);
+    await this.bot.api.sendMessage(numericUserId, text, {
+      reply_markup: kb,
+      parse_mode: "Markdown",
+    });
+  }
+
+  async sendMessage(userId: string, text: string): Promise<void> {
+    const numericUserId = parseInt(userId, 10);
+    await this.bot.api.sendMessage(numericUserId, text, { parse_mode: "Markdown" }).catch(() => {
+      this.bot.api.sendMessage(numericUserId, text).catch(() => {});
+    });
   }
 
   async start(handler: MessageHandler): Promise<void> {
@@ -100,7 +124,49 @@ export class TelegramChannel implements Channel {
       }
     });
 
-    this.bot.start();
+    // Approval gate callback handler (registered once at startup)
+    this.bot.on("callback_query:data", async (ctx) => {
+      const data = ctx.callbackQuery.data;
+      const userId = ctx.from!.id;
+
+      if (!this.allowedUserIds.has(userId)) {
+        await ctx.answerCallbackQuery({ text: "Access denied." });
+        return;
+      }
+
+      const [action, id] = data.split(":", 2);
+      if ((action === "approve" || action === "deny") && id && this.approvalGate) {
+        const approved = action === "approve";
+        this.approvalGate.handleCallback(id, approved);
+        await ctx.answerCallbackQuery({
+          text: approved ? "Comando aprobado." : "Comando denegado.",
+        });
+        // Remove inline buttons from the original message
+        await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+      }
+    });
+
+    // bot.start() returns a Promise that rejects on polling errors (e.g. 409
+    // Conflict when a previous instance's long-poll is still active). Catch
+    // and retry instead of crashing — the conflict resolves once the old
+    // poll times out (~30s).
+    const startPolling = () => {
+      this.bot.start({
+        onStart: () => {
+          log("info", "telegram", "Polling started successfully");
+        },
+      }).catch((err: unknown) => {
+        const msg = (err as Error).message ?? String(err);
+        if (msg.includes("409")) {
+          log("warn", "telegram", "Polling conflict (409), retrying in 3s...");
+          setTimeout(startPolling, 3000);
+        } else {
+          log("error", "telegram", "Polling failed", { error: msg });
+          setTimeout(startPolling, 5000);
+        }
+      });
+    };
+    startPolling();
   }
 
   private async handleIncoming(

@@ -112,4 +112,64 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 3");
   }
+
+  if (currentVersion < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS pending_approvals (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL,
+        command     TEXT NOT NULL,
+        args        TEXT NOT NULL DEFAULT '[]',
+        cwd         TEXT NOT NULL,
+        reason      TEXT NOT NULL,
+        status      TEXT NOT NULL DEFAULT 'pending',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at  TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pending_approvals_status
+        ON pending_approvals(status);
+
+      CREATE INDEX IF NOT EXISTS idx_pending_approvals_user
+        ON pending_approvals(user_id, status);
+    `);
+    db.pragma("user_version = 4");
+  }
+
+  if (currentVersion < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        id            TEXT PRIMARY KEY,
+        user_id       TEXT NOT NULL,
+        name          TEXT NOT NULL,
+        type          TEXT NOT NULL DEFAULT 'task',
+        cron_expression TEXT NOT NULL,
+        prompt        TEXT NOT NULL,
+        timezone      TEXT NOT NULL DEFAULT 'local',
+        status        TEXT NOT NULL DEFAULT 'active',
+        pre_approved  INTEGER NOT NULL DEFAULT 0,
+        run_count     INTEGER NOT NULL DEFAULT 0,
+        last_run_at   TEXT,
+        last_error    TEXT,
+        retry_after   TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_user ON scheduled_tasks(user_id);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_status ON scheduled_tasks(status);
+
+      CREATE TABLE IF NOT EXISTS pr_states (
+        pr_id           INTEGER PRIMARY KEY,
+        workspace       TEXT NOT NULL,
+        repo_slug       TEXT NOT NULL,
+        last_updated_on TEXT NOT NULL,
+        last_state      TEXT NOT NULL,
+        last_commit_hash TEXT,
+        participant_states TEXT NOT NULL DEFAULT '{}',
+        checked_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    db.pragma("user_version = 5");
+  }
 }

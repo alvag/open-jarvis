@@ -59,8 +59,23 @@ export const config = {
     defaultWorkspace: process.env.BITBUCKET_WORKSPACE || "",
     defaultRepoSlug: process.env.BITBUCKET_REPO_SLUG || "",
   },
+  tavily: {
+    enabled: !!process.env.TAVILY_API_KEY,
+    apiKey: process.env.TAVILY_API_KEY || "",
+  },
+  firecrawl: {
+    enabled: !!process.env.FIRECRAWL_API_KEY,
+    apiKey: process.env.FIRECRAWL_API_KEY || "",
+  },
   paths: {
     database: process.env.DB_PATH || "./data/jarvis.db",
     soul: process.env.SOUL_PATH || "./soul.md",
+  },
+  scheduler: {
+    timezone: process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    briefingTime: process.env.BRIEFING_TIME || "07:00",
+    briefingEnabled: process.env.BRIEFING_ENABLED !== "false",
+    prPollIntervalMinutes: parseInt(process.env.PR_POLL_INTERVAL_MINUTES || "15", 10),
+    prMonitorEnabled: process.env.PR_MONITOR_ENABLED !== "false",
   },
 } as const;

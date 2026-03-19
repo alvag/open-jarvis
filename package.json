@@ -1,6 +1,6 @@
 {
   "name": "open-jarvis",
-  "version": "0.3.0",
+  "version": "1.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -12,8 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mendable/firecrawl-js": "^4.16.0",
     "@napi-rs/canvas": "^0.1.96",
+    "@tavily/core": "^0.7.2",
     "better-sqlite3": "^12.6.2",
+    "croner": "^10.0.1",
     "dotenv": "^16.4.7",
     "grammy": "^1.35.0"
   },
