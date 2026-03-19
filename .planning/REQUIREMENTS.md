@@ -63,29 +63,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MNFST-01 | — | Pending |
-| MNFST-02 | — | Pending |
-| MNFST-03 | — | Pending |
-| MCP-01 | — | Pending |
-| MCP-02 | — | Pending |
-| MCP-03 | — | Pending |
-| MCP-04 | — | Pending |
-| MCP-05 | — | Pending |
-| MCP-06 | — | Pending |
-| MCP-07 | — | Pending |
-| MCP-08 | — | Pending |
-| MCP-09 | — | Pending |
-| SEC-01 | — | Pending |
-| SEC-02 | — | Pending |
-| SEC-03 | — | Pending |
-| SEC-04 | — | Pending |
-| SEC-05 | — | Pending |
+| MNFST-01 | Phase 5 | Pending |
+| MNFST-02 | Phase 5 | Pending |
+| MNFST-03 | Phase 5 | Pending |
+| MCP-01 | Phase 6 | Pending |
+| MCP-02 | Phase 6 | Pending |
+| MCP-03 | Phase 6 | Pending |
+| MCP-04 | Phase 6 | Pending |
+| MCP-05 | Phase 6 | Pending |
+| MCP-06 | Phase 6 | Pending |
+| MCP-07 | Phase 6 | Pending |
+| MCP-08 | Phase 6 | Pending |
+| MCP-09 | Phase 6 | Pending |
+| SEC-01 | Phase 7 | Pending |
+| SEC-02 | Phase 7 | Pending |
+| SEC-03 | Phase 6 | Pending |
+| SEC-04 | Phase 6 | Pending |
+| SEC-05 | Phase 7 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after initial definition*
+*Last updated: 2026-03-19 after roadmap creation*
