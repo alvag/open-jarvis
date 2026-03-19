@@ -42,7 +42,18 @@ Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma aut�
 
 ### Active
 
-(Empty — define in next milestone)
+- [ ] Soporte MCP client — Jarvis consume tools de MCP servers externos
+- [ ] Tool manifest declarativo — archivo de configuración para tools y MCP servers
+- [ ] Enfoque híbrido — custom tools + MCP tools coexisten en el agent loop
+
+## Current Milestone: v1.1 MCP Tools & Tool Manifest
+
+**Goal:** Permitir que Jarvis consuma herramientas de MCP servers externos mediante un manifest declarativo, manteniendo las custom tools existentes en un enfoque híbrido.
+
+**Target features:**
+- MCP client integration (conectar a MCP servers, descubrir y ejecutar tools)
+- Tool manifest declarativo (JSON/YAML config para activar/desactivar tools y MCP servers)
+- Enfoque híbrido (custom tools + MCP tools unificados en el agent loop)
 
 ### Out of Scope
 
@@ -88,4 +99,4 @@ Supervisor completo: crash recovery con backoff exponencial, heartbeat watchdog 
 | Direct Telegram API in supervisor (not grammy) | Supervisor must notify independently of bot process state | ✓ Good — notifications work even when bot is hung/crashed |
 
 ---
-*Last updated: 2026-03-19 after v1.0 milestone*
+*Last updated: 2026-03-19 after v1.1 milestone started*
