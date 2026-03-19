@@ -9,9 +9,9 @@ Requirements for MCP client integration and tool manifest. Each maps to roadmap 
 
 ### Manifest
 
-- [ ] **MNFST-01**: User can declare MCP servers in a JSON manifest file with type, command, args, env, and enabled fields
-- [ ] **MNFST-02**: User can use `${VAR}` syntax in manifest env fields to reference environment variables without exposing secrets
-- [ ] **MNFST-03**: Jarvis loads manifest at startup and only connects to servers marked `enabled: true`
+- [x] **MNFST-01**: User can declare MCP servers in a JSON manifest file with type, command, args, env, and enabled fields
+- [x] **MNFST-02**: User can use `${VAR}` syntax in manifest env fields to reference environment variables without exposing secrets
+- [x] **MNFST-03**: Jarvis loads manifest at startup and only connects to servers marked `enabled: true`
 
 ### MCP Client
 
@@ -63,9 +63,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MNFST-01 | Phase 5 | Pending |
-| MNFST-02 | Phase 5 | Pending |
-| MNFST-03 | Phase 5 | Pending |
+| MNFST-01 | Phase 5 | Complete |
+| MNFST-02 | Phase 5 | Complete |
+| MNFST-03 | Phase 5 | Complete |
 | MCP-01 | Phase 6 | Pending |
 | MCP-02 | Phase 6 | Pending |
 | MCP-03 | Phase 6 | Pending |
