@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
 status: unknown
 stopped_at: Completed 06-02-PLAN.md — MCP tool adapter and index wiring
-last_updated: "2026-03-19T13:03:09.567Z"
+last_updated: "2026-03-19T13:06:47.034Z"
 progress:
   total_phases: 3
   completed_phases: 2
