@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
 status: unknown
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-19T14:21:15.632Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-19T14:25:24.505Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -46,6 +46,7 @@ Plan: 2 of 2
 | Phase 06 P01 | 2min | 2 tasks | 3 files |
 | Phase 06 P02 | 3min | 2 tasks | 2 files |
 | Phase 07-mcp-integration P01 | 8min | 2 tasks | 2 files |
+| Phase 07-mcp-integration P02 | 5min | 2 tasks | 4 files |
 
 ### Decisions
 
@@ -68,6 +69,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 06]: MCP disconnect in shutdown step 3b (after stopScheduler, before in-flight wait)
 - [Phase 07-01]: Connection timeout (CONNECT_TIMEOUT_MS = 10_000) applied inside McpManager.connectOne() via Promise.race — not externally in index.ts
 - [Phase 07-01]: connectAll() returns McpStartupSummary without logging — index.ts owns the consolidated startup log
+- [Phase 07-mcp-integration]: hasMcpTools derived from mcpSummary.toolsRegistered > 0 (not config count) — only warns LLM when tools actually registered
+- [Phase 07-mcp-integration]: External Tools Notice placed after Current Context block, before memories section for natural reading order
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T14:21:15.629Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-19T14:25:24.502Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
