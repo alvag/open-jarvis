@@ -1,0 +1,30 @@
+[
+  {
+    "name": "backup_photos",
+    "description": "Backup photos from source to destination directory",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "description": "Source directory path" },
+        "destination": { "type": "string", "description": "Destination directory path" }
+      },
+      "required": ["source", "destination"]
+    },
+    "handler_path": "/absolute/path/to/backup_photos.py",
+    "enabled": true
+  },
+  {
+    "name": "sync_notes",
+    "description": "Sync notes from local folder to cloud storage",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "folder": { "type": "string", "description": "Local notes folder path" },
+        "dry_run": { "type": "string", "description": "Set to 'true' to preview changes without syncing" }
+      },
+      "required": ["folder"]
+    },
+    "handler_path": "/absolute/path/to/sync_notes.sh",
+    "enabled": false
+  }
+]
