@@ -36,10 +36,10 @@
   2. Env vars referenced as `${VAR}` in manifest env fields are substituted at load time; the raw token never appears in the loaded config object
   3. Servers with `enabled: false` are skipped entirely — no connection attempt, no error
   4. A missing or malformed manifest file produces a clear startup error, not a silent failure
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: Implement manifest schema, loader with `${VAR}` substitution, and config integration
+- [ ] 05-01-PLAN.md — Manifest loader + MCP config loader + index.ts wiring
 
 ### Phase 6: MCP Client Layer
 **Goal**: Jarvis can connect to a single MCP server (stdio or HTTP), discover its tools, and execute them — with crashes isolated and tool names namespaced to prevent collisions
