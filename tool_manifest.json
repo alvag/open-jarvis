@@ -1,1 +1,15 @@
-[]
+[
+  {
+    "name": "example_tool",
+    "description": "Example tool entry — copy and modify. Remove or set enabled:true when ready.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "input": { "type": "string", "description": "Example input parameter" }
+      },
+      "required": ["input"]
+    },
+    "handler_path": "./tools/example_tool.sh",
+    "enabled": false
+  }
+]
