@@ -1,208 +1,180 @@
 # Project Research Summary
 
-**Project:** Jarvis — Personal AI Agent capability expansion
-**Domain:** Personal AI agent — local Mac, Telegram interface, tool execution, scheduling, security
-**Researched:** 2026-03-18
+**Project:** Jarvis v1.1 — MCP Client Integration + Tool Manifest
+**Domain:** Personal AI agent capability expansion — MCP client, hybrid tool registry, declarative tool manifest
+**Researched:** 2026-03-19
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Jarvis is a personal AI agent with a clean, working foundation (grammy + OpenRouter + SQLite + TypeScript). This milestone expands its capabilities from a memory-and-tool loop into a fully autonomous agent that can search the web, read URLs, run shell commands, and execute scheduled tasks without user prompting. All four research streams confirm the same architectural direction: extend the existing layered monolith cleanly, avoid introducing new infrastructure (no Docker, no Redis, no second database), and treat shell execution as the highest-risk capability requiring defense in depth before shipping.
+Jarvis v1.1 adds MCP (Model Context Protocol) client support to the already-shipped v1.0 agent. The task is well-scoped: integrate `@modelcontextprotocol/sdk` v1.x as a client to connect to external MCP servers, adapt their tools into the existing `ToolRegistry` via a thin adapter layer, and provide a declarative JSON manifest to control which tools and servers are active — all without touching `agent.ts`, `tool-registry.ts`, or any existing custom tools. Research confirms this is a clean, additive integration with well-documented SDK patterns.
 
-The recommended approach is to build in four phases ordered by dependency and risk. Web search and scraping come first — they are zero-security-risk additions that immediately expand what Jarvis can answer. The security infrastructure (command blacklist, approval gate, per-tool risk levels) comes second because the shell execution tool cannot ship without it. Scheduled tasks come third because they depend on both the agent loop working reliably and the database schema migrations from earlier phases. Supervisor improvements are largely independent and can be threaded into any phase. Every recommended library is production-proven, zero-extra-infrastructure, and compatible with the existing Node.js 22 + ESM setup.
+The recommended approach is a four-module addition (`tool-manifest.ts`, `mcp-client.ts`, `mcp-manager.ts`, `mcp-tool-adapter.ts`) under a new `src/mcp/` directory. MCP tools are namespaced as `{serverName}__{toolName}` and registered into the same flat `ToolRegistry` as built-in tools — the agent loop sees no difference. Only `StdioClientTransport` is needed for v1.1 (local macOS servers). The manifest uses JSON (no new parser dependency) and supports `${VAR}` env substitution for secrets. New dependencies are two: `@modelcontextprotocol/sdk` and `zod` (SDK peer dep).
 
-The critical risk in this milestone is shell command security. Research across three independent sources (OWASP MCP05:2025, Trail of Bits RCE analysis, CVE-2025-53372) confirms that blacklist-based filtering is categorically insufficient — all three layers of the recommended security model (allowlist-based `execFile` + per-tool risk levels + human-in-the-loop Telegram approval) must be present before the shell tool is registered. A secondary risk is indirect prompt injection via web content (OWASP LLM01:2025 top-ranked vulnerability): scraped content must be wrapped in untrusted-content framing before reaching the LLM. Both risks are fully preventable with the patterns documented in ARCHITECTURE.md and PITFALLS.md.
+The primary risks are security-related, not architectural. MCP Tool Poisoning (malicious instructions embedded in tool descriptions) is a documented, weaponized attack with 30+ CVEs in Q1 2026. Tool naming collisions that silently shadow custom tools — particularly the security-critical `execute_command` — are a hard startup failure risk. Both risks are preventable: description truncation + untrusted-content framing, and mandatory `{serverName}__` namespace prefixing from day one. Transport hardening (wrap every MCP call in try/catch, use `Promise.allSettled` at startup) prevents MCP server crashes from taking down the agent. These must all be addressed before any external MCP server is connected.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack stays entirely intact. Four new capability areas require new libraries, all lightweight and infrastructure-free. Tavily (`@tavily/core@^0.7.2`) is the clear choice for web search — it is the only search API designed specifically for LLM agent workflows, returning ranked summaries rather than raw HTML. For web scraping, Cheerio (`cheerio@^1.2.0`) with axios handles static pages (90%+ of agent use cases) without spinning up a browser process; Playwright/Puppeteer is deferred until a concrete SPA use case demands it. Shell execution requires no new library — `child_process.execFile` (built-in) with an explicit allowlist is both safer and simpler than any sandboxing library. The `vm2` library has an active critical CVE (CVSS 9.8, Jan 2026) and must not be used. For scheduling, `croner@^10.0.1` replaces the `node-cron` mentioned in some sources — it is the only Node.js scheduler with true timezone support, pause/resume, and async handler support at zero dependencies.
+The existing stack is unchanged. Two new runtime dependencies are required: `@modelcontextprotocol/sdk@^1.11.0` (the only official Anthropic-maintained TypeScript MCP client SDK, stable 1.x branch) and `zod@^3.25.0` (SDK peer dependency). An optional third dependency, `yaml@^2.7.0`, is skipped — architecture research confirms JSON is sufficient and eliminates the dependency. The MCP SDK is ESM-native and fully compatible with the project's `"type": "module"` and Node.js 22 runtime.
 
 **Core technologies:**
-- `@tavily/core@^0.7.2`: Web search — purpose-built for LLM agents, returns ranked summaries, 1,000 free queries/month
-- `cheerio@^1.2.0` + `axios@^1.8.x`: Web scraping — jQuery-like HTML parsing without a browser, handles 90% of URLs
-- `child_process.execFile` (built-in): Shell execution — no shell spawning, eliminates metacharacter injection by design
-- `croner@^10.0.1`: Task scheduling — zero dependencies, full cron syntax, timezone support, async handlers, pause/resume
-- Brave Search REST API: Search fallback — independent index, $5/1,000 queries when Tavily quota is exhausted
+- `@modelcontextprotocol/sdk@^1.11.0` — MCP client; `StdioClientTransport` for local stdio servers — only official TypeScript SDK, Anthropic-maintained, v1.x is stable (v2 is pre-alpha, avoid)
+- `zod@^3.25.0` — schema validation; required as SDK peer dep — already in the MCP SDK's dependency tree, add to package.json to pin
+- `StdioClientTransport` — primary transport for spawning local MCP servers as child processes — correct for personal macOS agent; `StreamableHTTPClientTransport` (for remote servers) deferred to v2
+- JSON manifest (`tools.manifest.json`) — declarative server config with `enabled` flags and `${VAR}` env substitution — no YAML parser needed; format is intentionally compatible with `claude_desktop_config.json`
+
+**What NOT to add:** MCP SDK v2 (pre-alpha), `@automatalabs/mcp-client-manager` (hides lifecycle control), any HTTP server framework (not needed to consume MCP), `js-yaml` (use `yaml` or JSON instead), `vm2` (critical CVE-2026-22709).
 
 ### Expected Features
 
-**Must have (table stakes — P1 for this milestone):**
-- Web Search tool (Tavily) — real-time information access; unblocks proactive briefings
-- Web Scraping tool (Cheerio for static, Firecrawl API for JS-heavy pages) — URL reading on demand
-- Shell Command Execution tool — single highest-value capability; enables scripting and automation on Mac
-- Command allowlist + `execFile` enforcement — mandatory precondition for shell execution
-- HITL Approval via Telegram inline keyboard — mandatory precondition for shell execution; user approves flagged commands
-- Scheduled Tasks with croner + SQLite persistence — enables proactive behavior (morning briefings, reminders)
-- Graceful Shutdown on SIGTERM — prevents state corruption during restarts; low effort, high reliability impact
+The v1.1 MCP integration has a clear P1/P2/P3 hierarchy. Everything labeled P1 is required for "MCP support" to mean anything; P2 features are added once the core pipeline is working in daily use.
 
-**Should have (differentiators — P2, add after core is validated):**
-- Morning briefing scheduled task (preset combining Gmail + Calendar + web search + Bitbucket PRs)
-- Supervisor hang detection / watchdog (heartbeat file, SIGKILL on stale heartbeat)
-- Supervisor auto-update from git (periodic `git rev-parse HEAD` poll in supervisor)
+**Must have (table stakes — P1):**
+- Tool manifest file (JSON) — controls which built-in tools and MCP servers are active
+- MCP Manager + server connections via stdio — connects to enabled servers at startup
+- Tool discovery (`listTools()` with result caching) — fetches tools from each connected server
+- Namespace prefix logic (`{serverName}__{toolName}`) — prevents tool name collisions; hard prerequisite
+- MCP tool wrapper implementing `Tool` interface — delegates `execute()` to `client.callTool()`
+- ToolResult normalization (MCP `content[]` → `{ success, data, error }`) — bridges MCP result format to existing agent loop
+- Env var interpolation in manifest (`${TOKEN}` syntax) — keeps credentials out of version-controlled config
+- Graceful shutdown for MCP clients — `transport.close()` before `db.close()`
+- Startup failure tolerance — failed connections log a warning and continue; don't crash Jarvis
+
+**Should have (P2 — add after validation):**
+- `allowedTools` filter per server — suppress irrelevant tools from verbose MCP servers
+- `tools/list_changed` notification handling — cache invalidation on server-driven tool list updates
+- Startup Telegram notification listing which servers connected vs. failed
 
 **Defer (v2+):**
-- Persistent crash/restart logs (useful but not blocking anything)
-- Per-tool permission flags in Tool schema (needed only if tool set grows significantly)
-- Puppeteer-based full browser automation (defer until a concrete use case requires it)
-- External web dashboard for approvals (Telegram IS the interface; a second UI splits attention)
-- Multi-agent orchestration frameworks (the existing ReAct loop handles all current needs)
+- `StreamableHTTPClientTransport` — only needed for remote HTTP MCP servers (no current use case)
+- Lazy/on-demand stdio server connections — premature optimization for personal use (3-5 servers)
+- MCP resources and prompts (not just tools) — tools are sufficient for v1.1
+- Per-tool HITL approval gate for MCP tools — requires known tool semantics upfront; revisit in v2
+
+**Anti-features (do not implement):**
+- MCP server auto-discovery — no standard mechanism; fragile; explicit manifest is correct
+- Dynamic manifest reload without restart — stateful connections make hot-reload complex and error-prone
+- Migrating custom tools (Gmail, Calendar) to MCP servers — existing tools have deep integration (approval gate, ToolContext, SQLite access) that MCP cannot replicate
 
 ### Architecture Approach
 
-The architecture extends the existing clean layered monolith without restructuring it. Two new modules are introduced at clear boundaries: `src/security/` (command blacklist, tool permissions, approval gate) and `src/scheduler/` (croner scheduler, task runner, task types). The tool registry becomes the single enforcement point for security — `ToolRegistry.execute()` checks `riskLevel` before every tool call, invoking the approval gate for high-risk operations. The approval gate uses async Promise resolution stored in a Map (with SQLite-persisted state for restart safety) so the event loop stays free while waiting for user response. The scheduler runs in-process, reads tasks from a new `scheduled_tasks` SQLite table, and calls the existing `runAgent()` function with a synthetic context — no special code path needed. Two new SQLite tables are required: `scheduled_tasks` (cron expression + prompt + enabled flag) and `execution_log` (audit trail per tool call).
+MCP client sits as a peer to built-in tools at the tools layer — not a separate layer. Four new files handle the entire integration: `src/tools/tool-manifest.ts` (manifest loader), `src/mcp/mcp-client.ts` (single-server wrapper), `src/mcp/mcp-manager.ts` (multi-server lifecycle), and `src/mcp/mcp-tool-adapter.ts` (bridges MCP tools to `Tool` interface). Only `src/index.ts` and `src/config.ts` are modified in existing files. `agent.ts`, `tool-registry.ts`, all built-in tools, the scheduler, the security layer, and the LLM layer are untouched.
 
 **Major components:**
-1. `src/security/` (new) — command blacklist, per-tool risk levels, async approval gate; wraps `ToolRegistry.execute()`
-2. `src/scheduler/` (new) — croner instance, task CRUD, task runner that calls `runAgent()` and broadcasts result
-3. `src/tools/built-in/web-search.ts` (new) — Tavily API calls, returns ranked snippets to LLM
-4. `src/tools/built-in/web-scrape.ts` (new) — axios + Cheerio HTML fetch/parse with untrusted-content framing
-5. `src/tools/built-in/shell-exec.ts` (new) — `execFile` with allowlist check, timeout, maxBuffer cap
-6. `src/tools/built-in/schedule-task.ts` (new) — CRUD interface to `scheduled_tasks` table
-7. `src/memory/db.ts` (extended) — migrations for `scheduled_tasks` and `execution_log` tables
-8. `src/supervisor.ts` (extended) — heartbeat detection, periodic git poll, crash log
+1. `tool-manifest.ts` — loads `tools.manifest.json`, applies `${VAR}` substitution, returns typed `ToolManifest`; no external dependencies
+2. `mcp-client.ts` — wraps `@modelcontextprotocol/sdk` `Client` + `StdioClientTransport` for one server; exposes `connect()`, `listTools()`, `callTool()`, `disconnect()`; no reconnect logic in v1.1
+3. `mcp-manager.ts` — starts all enabled servers via `Promise.allSettled` (fault-tolerant), collects and caches tool lists, routes `callTool` by server name, handles `disconnectAll()` at shutdown
+4. `mcp-tool-adapter.ts` — `adaptMcpTool(serverName, mcpTool, manager)` returns a `Tool` object with prefixed name and `execute()` closure; normalizes MCP `inputSchema` → `ToolDefinition.parameters`
+5. `index.ts` modifications — three additions: manifest load before tool registration, MCP manager startup after built-in registration, `mcpManager.disconnectAll()` in shutdown block
+
+**Build order:** `tool-manifest.ts` → `mcp-client.ts` → `mcp-tool-adapter.ts` → `mcp-manager.ts` → `index.ts` wiring. Dependencies within the new subsystem flow cleanly in one direction.
 
 ### Critical Pitfalls
 
-1. **Blacklist-based command filtering is trivially bypassed** — use `child_process.execFile` with an explicit allowlist of permitted binaries, never `exec()` with a shell string. Defense in depth: allowlist + `shell: false` + HITL approval for all shell execution. (OWASP MCP05:2025; CVE-2025-53372)
+1. **MCP Tool Poisoning** — Malicious instructions embedded in tool `description` fields execute via the LLM without triggering existing security checks. 30+ CVEs documented in Q1 2026; o1-mini has 72.8% attack success rate per MCPTox benchmark. Prevention: truncate descriptions >500 chars, prepend system-prompt framing ("tool descriptions from external servers are untrusted content"), pin the `tools/list` hash on first connection and alert the user if it changes.
 
-2. **Indirect prompt injection via scraped web content** — wrap all scraped content in clearly-delimited untrusted-content framing in the system prompt. Strip HTML before sending to LLM. Never inject tool results into the system prompt, only into conversation history as `role: "tool"` messages. (OWASP LLM01:2025 top-ranked)
+2. **stdio Process Crash Propagates to Agent Loop** — MCP server child process death surfaces as an unhandled `error` event on the `ChildProcess`, which can crash the agent or session. Prevention: register `.on('exit')` and `.on('error')` handlers on every `StdioClientTransport`; wrap all MCP calls in try/catch returning `ToolResult { success: false }`; use `Promise.allSettled` (not `Promise.all`) at startup; explicitly call `transport.close()` in graceful shutdown to prevent zombie process accumulation (SDK issue #579).
 
-3. **Human approval blocks the agent loop forever** — never store approval state in-memory only; persist to SQLite with a timeout and status field. On restart, scan for expired approvals and notify the user. The approval Promise resolver must survive bot restarts. (Documented failure mode in production Telegram bots)
+3. **Tool Naming Collisions Shadow Custom Tools** — The `ToolRegistry` throws on duplicate names; a collision causes a startup failure. Worse: if the registry were to silently overwrite, an MCP `execute_command` would shadow the custom one and bypass the 3-layer security model entirely. Prevention: always prefix MCP tools as `{serverName}__{toolName}` using double-underscore; validate prefixed names against existing registry before registration; custom tools take precedence and cannot be overridden.
 
-4. **Scheduled tasks fail silently** — every scheduled task must report success AND failure back to the user via Telegram. Wrap all task execution in a top-level try/catch that always sends a failure notification. Log structured events (start, finish, duration, error) to a persistent file. (Production incident pattern)
+4. **MCP Tool Schema Mismatch Silently Drops Tools** — MCP uses `inputSchema`; Jarvis uses `parameters`. Several real-world servers wrap `inputSchema` in an extra `jsonSchema` key (Twenty's MCP server dropped 30+ tools this way in Claude Desktop). Prevention: write an explicit schema adapter that normalizes `inputSchema` → `parameters`, unwraps nested wrappers, ensures `type: "object"` is present, and logs a warning + skips any tool that fails normalization.
 
-5. **Scheduled task overlap — same task runs twice concurrently** — use a per-task lock in the `execution_log` SQLite table (`status: running | done | failed`). Only start a new run if no run for that task is currently `running`. Add a stale-lock timeout (5x expected duration). Never use `setInterval` directly for multi-step agent tasks. (node-cron documented pitfall)
+5. **Context Window Bloat from Too Many MCP Tools** — LLM accuracy degrades past 20-40 tools in context; 50 tools = 10-20K tokens consumed by schemas alone. Prevention: limit active registered tools to ≤30 (log token count at startup); use `allowedTools` per server in manifest to suppress irrelevant tools; default MCP servers to `enabled: false` until user explicitly activates them.
+
+---
 
 ## Implications for Roadmap
 
-Based on research, the build order is determined by two constraints: (1) security infrastructure must precede the shell execution tool, and (2) web search/scraping have no security dependencies and deliver immediate user value. Architecture.md explicitly documents the dependency graph; this section translates it into phases.
+Based on research, the integration has clear dependency ordering that suggests a 3-phase internal implementation sequence:
 
-### Phase 1: Web Access (Search + Scraping)
+### Phase 1: Foundation — Manifest + SDK Installation
+**Rationale:** All subsequent phases depend on the manifest schema and the MCP SDK being installed. `tool-manifest.ts` has zero external dependencies and can be built and tested in isolation. This phase is prerequisite for everything else.
+**Delivers:** `tools.manifest.json` template, `ToolManifest` TypeScript interface, `loadManifest()` loader with `${VAR}` substitution, `MCP_MANIFEST_PATH` config var, `@modelcontextprotocol/sdk` and `zod` installed
+**Addresses:** Tool manifest (P1), env var interpolation (P1), custom tool enable/disable via manifest
+**Avoids:** Having to retrofit env substitution and manifest schema later; keeps secrets out of version-controlled config from day one
+**Research flag:** Standard patterns — no deeper research needed; JSON schema design is straightforward
 
-**Rationale:** Zero security risk — these are read-only tools with no destructive capability. They deliver immediate user value and unblock the morning briefing feature. No new infrastructure or database changes required; just new tools plugged into the existing registry. Building these first validates the tool-adding workflow before tackling the riskier shell execution work.
+### Phase 2: MCP Client Layer — Transport + Adapter
+**Rationale:** `mcp-client.ts` and `mcp-tool-adapter.ts` are tightly coupled and should be built together. The adapter depends on the client's `McpToolDefinition` type. Transport hardening (crash handling, try/catch boundaries) must be built here — it cannot be safely retrofitted after the manager is wired in.
+**Delivers:** `McpClient` class wrapping SDK `Client` + `StdioClientTransport`; `adaptMcpTool()` function with namespace prefix logic and schema normalization; MCP `ToolResult` normalization (`content[]` → `{ success, data, error }`)
+**Uses:** `@modelcontextprotocol/sdk` `StdioClientTransport`, `Client.listTools()`, `Client.callTool()`
+**Implements:** Registry-transparent MCP integration; namespace-prefixed tool names
+**Avoids:** Pitfall 2 (stdio crash) — exit/error handlers and try/catch; Pitfall 3 (naming collisions) — `__` prefix built in; Pitfall 4 (schema mismatch) — normalization adapter built in
+**Research flag:** Standard patterns — SDK `Client` API is well-documented with HIGH confidence; no deeper research needed
 
-**Delivers:** Jarvis can search the web in real time and read any URL the user sends. The agent loop immediately becomes more useful for research, fact-checking, and answering time-sensitive questions.
-
-**Addresses features:** Web Search (Tavily), Web Scraping (Cheerio/axios), fallback to Firecrawl API for JS-heavy pages
-
-**Avoids:** Prompt injection via web content — wrap scraped content in untrusted-content framing from day one; do not defer this safety measure
-
-**Stack:** `@tavily/core`, `axios`, `cheerio`
-
-**Research flag:** Standard patterns. Tavily has official SDK docs. Cheerio 1.x has official docs. Skip deeper research-phase.
-
-### Phase 2: Security Infrastructure + Shell Execution
-
-**Rationale:** The security module must exist before the shell tool is registered. Building security first means the shell tool is safe by construction — it cannot ship without the gate being in place. This ordering also validates the approval-gate UX before it becomes critical.
-
-**Delivers:** Jarvis can run shell commands on the Mac with defense-in-depth security: allowlist-based `execFile`, per-tool risk levels on the registry, and Telegram HITL approval gate for high-risk operations. Approval state persists across restarts via SQLite.
-
-**Addresses features:** Shell Command Execution, Command allowlist + `execFile`, HITL Approval Gate, Graceful Shutdown on SIGTERM
-
-**Avoids:** `exec()` string interpolation, blacklist-only security, approval state lost on restart, event-loop blocking during approval wait
-
-**Stack:** `child_process.execFile` (built-in), SQLite approvals table (new migration)
-
-**Architecture:** `src/security/command-blacklist.ts`, `src/security/tool-permissions.ts`, `src/security/approval-gate.ts`, `src/tools/built-in/shell-exec.ts`; `riskLevel` field added to `ToolDefinition`
-
-**Research flag:** Needs careful implementation review. The three-layer security model has documented patterns but the interaction between approval gate, agent loop pause, and bot restart survival is nuanced. Consider a focused implementation review of the approval gate before shipping.
-
-### Phase 3: Scheduled Tasks
-
-**Rationale:** Scheduling depends on the agent loop running reliably (available from the start) and on the DB schema migrations being established (available after Phase 2 adds migration patterns). The morning briefing preset also depends on web search existing (Phase 1). Building third lets the scheduler leverage all existing tools including web search.
-
-**Delivers:** Jarvis operates proactively — morning briefings, PR reminders, any recurring task the user defines. The `schedule-task` tool gives Jarvis the ability to manage its own schedule via natural language.
-
-**Addresses features:** Scheduled Tasks (croner + SQLite), Morning Briefing preset (P2 — can ship as part of this phase or immediately after)
-
-**Avoids:** Silent task failures (always report via Telegram), task overlap (SQLite lock per task), hardcoded tasks (store in `scheduled_tasks` table), timezone drift (always pass explicit timezone to croner)
-
-**Stack:** `croner@^10.0.1`, new SQLite tables (`scheduled_tasks`, `execution_log`)
-
-**Architecture:** `src/scheduler/scheduler.ts`, `src/scheduler/task-runner.ts`, `src/scheduler/task-types.ts`, `src/tools/built-in/schedule-task.ts`
-
-**Research flag:** Standard patterns for croner. SQLite table design is straightforward. The overlap-prevention pattern (per-task status lock) needs explicit implementation — this is the highest-risk part of this phase.
-
-### Phase 4: Supervisor Improvements
-
-**Rationale:** Independent of all bot-process internals — can be built alongside any phase or as its own phase. Grouped at the end because it addresses reliability rather than new user-facing capability, and because it is easiest to understand what to monitor after the other phases have shipped.
-
-**Delivers:** Supervisor detects hangs (not just crashes), auto-updates from git on new commits, and writes structured crash/restart logs for debugging.
-
-**Addresses features:** Supervisor Hang Detection (P2), Supervisor Auto-Update from git (P2), Persistent crash logs (P3 — can defer entirely)
-
-**Avoids:** Heartbeat via HTTP (use file-based heartbeat at `/tmp/jarvis.heartbeat`); replacing the supervisor with PM2 (out-of-scope per project constraints)
-
-**Stack:** `child_process` (built-in), `node:fs/promises` (built-in), no new dependencies
-
-**Research flag:** Standard patterns. All built-in Node.js APIs. Skip deeper research-phase.
+### Phase 3: Integration — Manager + index.ts Wiring
+**Rationale:** `McpManager` ties `McpClient` and `McpToolAdapter` together and is the final integration point. `index.ts` changes come last because they depend on all prior components. This phase completes the pipeline: manifest → connect → discover → register → agent uses MCP tools.
+**Delivers:** `McpManager` with `startAll()` (fault-tolerant via `Promise.allSettled`), `callTool()` routing by server name, `disconnectAll()` for graceful shutdown; `index.ts` wired with manifest-driven tool loading + MCP startup + shutdown extension; integration test against `@modelcontextprotocol/server-filesystem`; description truncation + system-prompt framing for poisoning defense; startup token count logging
+**Implements:** Fail-open server connection; manifest as single source of truth
+**Avoids:** Pitfall 1 (tool poisoning) — description truncation and system prompt framing added to `context-builder.ts`; Pitfall 5 (context bloat) — token count logged at startup; zombie processes — `transport.close()` in shutdown sequence
+**Research flag:** The tool poisoning defense (system prompt framing + description truncation threshold) should be validated empirically against real MCP servers during implementation. If the exact approach is unclear, use `/gsd:research-phase`.
 
 ### Phase Ordering Rationale
 
-- **Phase 1 before Phase 2:** Web access has no security dependencies and delivers immediate user value. Validates tool-addition workflow before the more complex security work.
-- **Phase 2 before Phase 3:** Security module must exist before shell execution is registered. The SQLite approval table also establishes migration patterns used in Phase 3.
-- **Phase 3 after Phase 1 and 2:** Morning briefing preset (the highest-value scheduled task) requires web search from Phase 1. Scheduler patterns are simpler to validate once the agent loop is proven reliable with new tools.
-- **Phase 4 is independent:** Can be done in parallel with Phase 3 or after. No user-facing features blocked on it.
-- **Graceful shutdown (SIGTERM handler) belongs in Phase 2:** It is a precondition for the approval gate working correctly across restarts. Low effort, high reliability impact.
+- **Manifest before client:** The manifest schema determines `McpServerConfig` types that `McpClient` uses. Building manifest first means the client constructor gets correct, typed config from day one rather than ad-hoc parameters.
+- **Client + adapter together:** `adaptMcpTool()` needs `McpClient`'s output types to be stable. Building both in Phase 2 avoids schema-drift between the two modules.
+- **Manager + wiring last:** `McpManager` is the only component that requires all prior components to be correct. Wiring it last means each prior phase is independently testable before being composed.
+- **Security hardening embedded, not bolted on:** Pitfalls 1-5 are addressed within the phase that creates the relevant surface area — transport hardening in Phase 2, poisoning defense in Phase 3. This is deliberate: retrofitting security after integration is the primary failure mode documented in PITFALLS.md.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 2 (Security + Shell):** The approval gate's interaction with the agent loop pause/resume, restart survival, and Telegram callback de-duplication is nuanced. Review the Pattern 2 example in ARCHITECTURE.md carefully. Consider a focused spike on the approval-gate state machine before writing the implementation plan.
+Needs deeper research during planning:
+- **Phase 3 (tool poisoning defense):** The exact system prompt wording for framing MCP tool descriptions as untrusted content should be tested empirically. The 500-char description truncation threshold is a heuristic — validate against real MCP servers (filesystem, git, fetch) to confirm no legitimate tool descriptions are truncated.
+- **Phase 3 (allowedTools P2):** When implementing `allowedTools` filtering per server, verify the interaction with `tools/list_changed` notifications — a server that emits list changes mid-session could re-introduce disabled tools if the filter is only applied at startup.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (Web Access):** Tavily SDK has official docs; Cheerio 1.x is thoroughly documented. Patterns are established.
-- **Phase 3 (Scheduling):** croner docs cover all required patterns. The main implementation detail (overlap prevention via SQLite lock) is documented in PITFALLS.md.
-- **Phase 4 (Supervisor):** All built-in Node.js APIs with no research needed.
+- **Phase 1 (manifest):** JSON schema design and file loading with `${VAR}` substitution are standard Node.js patterns; HIGH confidence.
+- **Phase 2 (client + adapter):** MCP SDK `Client` and `StdioClientTransport` APIs are documented with HIGH confidence via official SDK docs and verified against v1.27.1.
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | MEDIUM-HIGH | Tavily version (0.7.2) confirmed ~20 days ago — slight staleness. croner, cheerio, isolated-vm versions confirmed from official sources within 1-2 months. `execFile` security recommendation from official Node.js docs. |
-| Features | HIGH | Active requirements from PROJECT.md verified against 2026 ecosystem. Competitor analysis (OpenAI Operator, Google CC) validates proactive briefing and HITL approval as differentiators. |
-| Architecture | HIGH | Based on direct codebase inspection + verified CVE patterns. Build order validated against actual dependency graph. |
-| Pitfalls | HIGH | Security pitfalls verified against named CVEs (CVE-2025-53372, CVE-2026-22709, OWASP LLM01/MCP05 2025). Scheduling pitfalls from multiple production sources. |
+| Stack | HIGH | `@modelcontextprotocol/sdk` v1.x verified via npm registry and official GitHub; transport selection (stdio-first) confirmed against MCP spec v2025-03-26; `zod` peer dep verified |
+| Features | HIGH | MCP spec v2025-06-18 and official SDK docs confirm `listTools`/`callTool` API; namespace collision analysis backed by Microsoft Research data (775 collisions found across servers) |
+| Architecture | HIGH | Direct codebase inspection of existing `ToolRegistry` + `Tool` interface; SDK v1.27.1 API verified; adapter pattern is a straightforward application of the existing `Tool` interface |
+| Pitfalls | HIGH | Tool poisoning: Invariant Labs research + 30+ CVEs; stdio crash: SDK issue #579; naming collisions: Microsoft Research + OpenAI Agents SDK issue #464; schema mismatch: Twenty issue #15348 + Agno issue #2791 |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Firecrawl API vs. Cheerio decision:** FEATURES.md recommends Firecrawl API for JS-heavy scraping; STACK.md recommends Cheerio + axios for static pages. The resolution is: ship Cheerio first (handles 90% of cases), add Firecrawl API integration if specific JS-heavy pages are needed. Validate by testing the first 10 URLs Jarvis actually scrapes in practice.
+- **Reconnect behavior:** Research explicitly recommends no auto-reconnect in v1.1 due to SDK issue #510 (re-initialize required after disconnect). A crashed MCP server requires a Jarvis restart. Acceptable for personal use, but the failure UX (Telegram notification on first failed tool call) must be implemented to make this visible.
+- **Tool count budget:** The ≤30 tool limit is a heuristic drawn from multiple sources but not an OpenRouter-specific hard limit. Log tool definition token count at startup in Phase 3 and monitor in early sessions. If OpenRouter has a lower per-request function-calling limit, `allowedTools` filtering (P2) should be accelerated.
+- **HITL gate for MCP tools:** MCP tools bypass the existing `execute_command` 3-layer security in v1.1. The manifest's `allowedTools` per server partially mitigates this (user controls which tools are exposed), but MCP tools with destructive capability (write_file, create_issue) have no approval gate. Flag explicitly for v2 planning.
 
-- **Tavily quota exhaustion strategy:** The free tier (1,000 queries/month) is sufficient for personal use, but the Brave Search fallback should be wired in during Phase 1 to avoid a hard outage when quota runs out. Confirm the fallback routing logic during Phase 1 implementation.
-
-- **Approval gate restart survival — scope decision:** PITFALLS.md recommends persisting approval state to SQLite (approval table). ARCHITECTURE.md Pattern 2 example uses an in-memory Map. These are not contradictory, but Phase 2 must explicitly choose the SQLite-persisted approach (not the in-memory-only approach) to avoid the documented pitfall. This decision should be explicit in the Phase 2 implementation plan.
-
-- **`isolated-vm` deferral:** If the shell tool ever evolves to execute LLM-generated JavaScript (not just pre-written scripts), `isolated-vm@6.0.2` with `--no-node-snapshot` is the correct addition. This requires updating the supervisor launch command. Treat as a future-phase consideration, not a current requirement.
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct codebase inspection: `/Users/max/Personal/repos/open-jarvis/src/` — architecture, existing patterns
-- `cheerio` npm + GitHub: v1.2.0, Oct 2024 release — scraping recommendation
-- `croner` npm: v10.0.1, published 1 month ago — scheduling recommendation
-- `isolated-vm` GitHub releases: v6.0.2, Oct 2025 — sandbox recommendation
-- CVE-2026-22709 (vm2): Endor Labs, Jan 2026 — vm2 avoidance
-- CVE-2025-53372 (Node.js MCP server command injection): GitHub Advisory — shell security
-- OWASP LLM01:2025 Prompt Injection — web scraping risk
-- OWASP MCP05:2025 Command Injection & Execution — shell execution risk
-- Node.js `child_process` official docs — `execFile` recommendation
-- Trail of Bits: Prompt Injection to RCE in AI Agents — attack chain analysis
+- `@modelcontextprotocol/sdk` npm registry + GitHub releases — v1.x stable, transport APIs, `Client`/`StdioClientTransport`/`listTools`/`callTool`
+- MCP spec v2025-03-26 — stdio + Streamable HTTP standard; SSE deprecated
+- MCP spec v2025-06-18 — tool result `content[]` format, `isError` semantics
+- MCP TypeScript SDK official docs (client.md, building-a-client-node) — connect/list/call lifecycle
+- Direct codebase inspection: `/Users/max/Personal/repos/open-jarvis/src/` — existing `ToolRegistry`, `Tool` interface, `index.ts` startup sequence
+- Invariant Labs Tool Poisoning research (April 2025) + MCP Security 2026 timeline (30+ CVEs)
+- MCPTox benchmark — 72.8% attack success rate on standard agent security models
+- Microsoft Research: tool-space interference analysis (775 cross-server collisions found)
+- MCP SDK GitHub issues #579 (stdio close spec violation), #245 (60s timeout), #510 (reconnect without re-initialize)
+- Twenty MCP issue #15348 — `inputSchema` nested wrapper drops all tools silently
+- OpenAI Agents SDK issue #464 — duplicate tool names cause errors
+- Claude Code issues #18557 (SSE disconnection), #26666 (lazy MCP init)
 
 ### Secondary (MEDIUM confidence)
-- Tavily npm: v0.7.2, published ~20 days ago — search recommendation (version may have bumped)
-- Brave Search pricing announcement — fallback cost model
-- BetterStack Node.js schedulers comparison — scheduler alternatives
-- CVE-2025-68613 (n8n sandbox escape) — blacklist bypass pattern
-
-### Tertiary (LOW confidence / community)
-- Firecrawl API vs. Puppeteer comparison (zackproser.com) — JS-heavy scraping alternative
-- Human-in-the-Loop AI Agents design patterns (StackAI) — HITL approval UX patterns
-- AI Agent Job Scheduling patterns (Fast.io) — scheduling for agents
+- LibreChat MCP server config structure — manifest field conventions
+- `yaml` npm package v2.x — ESM-native, types built-in (decided against; JSON used instead)
+- IBM MCP Context Forge issue #258 — exponential backoff reconnect strategy
+- MCP Reliability Playbook (Google Cloud Community) — circuit breaker patterns
+- The New Stack: 10 strategies to reduce MCP token bloat
+- Octopus blog: MCP timeout and retry strategies
 
 ---
-*Research completed: 2026-03-18*
+*Research completed: 2026-03-19*
 *Ready for roadmap: yes*

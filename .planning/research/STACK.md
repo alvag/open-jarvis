@@ -1,18 +1,236 @@
 # Stack Research
 
 **Domain:** Personal AI agent — Node.js/TypeScript capability expansion
-**Researched:** 2026-03-18
-**Confidence:** MEDIUM-HIGH (verified against npm registry, official repos, and official docs)
+**Researched:** 2026-03-18 (v1.0) | Updated: 2026-03-19 (v1.1 MCP additions)
+**Confidence:** HIGH (v1.0 section) | HIGH (v1.1 section — verified via official SDK docs, npm registry, MCP spec)
+
+---
+
+# v1.1: MCP Client Integration + Tool Manifest (NEW)
+
+## What Already Exists — Do Not Re-Evaluate
+
+| Already in Production | Version | Role |
+|-----------------------|---------|------|
+| Node.js + TypeScript ESM (`"type": "module"`) | locked | Runtime |
+| grammy | ^1.35.0 | Telegram channel |
+| better-sqlite3 | ^12.6.2 | Memory + persistence |
+| croner | ^10.0.1 | Scheduler |
+| Tavily + Firecrawl | ^0.7.2 / ^4.16.0 | Web tools |
+| `ToolRegistry` + `Tool` interface | custom | Tool registry — extend, not replace |
+
+The `ToolRegistry` holds a `Map<string, Tool>`. Each `Tool` has `definition: ToolDefinition` (name, description, parameters as JSON Schema) and an async `execute()` method. MCP tools are adapted to this same interface — the agent loop needs zero changes.
+
+---
+
+## New Core Dependency
+
+### `@modelcontextprotocol/sdk`
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| `@modelcontextprotocol/sdk` | `^1.11.0` | MCP client — connect to MCP servers, discover tools, call tools | The only official TypeScript/Node.js MCP client SDK, authored and maintained by Anthropic. v1.x is stable and production-endorsed. **Do not use v2 (pre-alpha)** — anticipated stable release Q2 2026; v1.x will receive security backports for at least 6 months after v2 ships. |
+| `zod` | `^3.25.0` | Schema validation — peer dependency required by MCP SDK | The SDK internally imports `zod/v4` but declares the peer dep as `^3.25.0 \|\| ^4.0.0`. Either works. The project currently has no zod — add `zod@^3.25.0` to satisfy the peer dep without adopting v4 churn. |
+
+**Version note:** Latest confirmed stable as of research date is `1.11.0`+. The npm registry reports active 1.x maintenance with no breaking changes in recent releases (v1.25.x, v1.26.x, v1.27.x were all bug-fix / security releases). Install with `npm install @modelcontextprotocol/sdk@latest` to get the current 1.x patch.
+
+---
+
+## Optional Dependency: YAML Manifest Parser
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| `yaml` | `^2.7.0` | Parse `tools.yaml` manifest config file | Add if the manifest file uses YAML format. ESM-native, TypeScript types built-in (no `@types/` needed). Skip entirely if using JSON — Node.js `JSON.parse` handles that with zero dependencies. |
+
+**Decision:** Use YAML. The tool manifest is a human-edited config file. YAML supports inline comments (`# disabled: true`) which are critical for documenting disabled tools and environment variable references. The `yaml` package (v2.x) is the ecosystem standard for ESM TypeScript projects.
+
+---
+
+## Transport Options
+
+Three transport classes ship in `@modelcontextprotocol/sdk`. For v1.1, implement in priority order:
+
+| Transport Class | Import Path | Use Case | Status |
+|-----------------|-------------|----------|--------|
+| `StdioClientTransport` | `@modelcontextprotocol/sdk/client/stdio.js` | Spawn local MCP servers as subprocesses (filesystem, git, shell wrappers, etc.) | Stable — **implement first** |
+| `StreamableHTTPClientTransport` | `@modelcontextprotocol/sdk/client/streamableHttp.js` | Connect to remote HTTP MCP servers | Stable — current MCP spec standard (2025-03-26) |
+| `SSEClientTransport` | `@modelcontextprotocol/sdk/client/sse.js` | Connect to legacy HTTP+SSE servers (pre-2025-03-26 spec) | Deprecated for new servers but needed for backwards compatibility |
+
+**For Jarvis v1.1:** `StdioClientTransport` covers the primary use case — local MCP servers running on macOS. Add `StreamableHTTPClientTransport` with SSE fallback as a second pass for any remote servers in the manifest.
+
+**Backwards-compatible HTTP pattern** (handles both modern and legacy remote servers):
+```typescript
+try {
+  const transport = new StreamableHTTPClientTransport(serverUrl);
+  await client.connect(transport);
+} catch {
+  // Fall back to legacy SSE transport
+  const transport = new SSEClientTransport(serverUrl);
+  await client.connect(transport);
+}
+```
+
+---
+
+## Integration with Existing `ToolRegistry`
+
+The MCP SDK's `client.listTools()` returns tools with shape `{ name, description, inputSchema }`. This maps directly onto the existing `ToolDefinition` interface. No changes to `ToolRegistry` or the agent loop are needed.
+
+A thin adapter class bridges MCP tools into the registry:
+
+```typescript
+// Conceptual pattern — not prescriptive implementation
+import type { Tool, ToolDefinition, ToolResult } from "../tool-types.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+class McpToolAdapter implements Tool {
+  definition: ToolDefinition; // mapped from MCP tool.name/description/inputSchema
+  private client: Client;
+
+  execute(args: Record<string, unknown>): Promise<ToolResult> {
+    return this.client.callTool({
+      name: this.definition.name,
+      arguments: args,
+    }).then(result => ({ success: true, data: result.content }))
+      .catch(err => ({ success: false, data: null, error: err.message }));
+  }
+}
+```
+
+One `McpToolAdapter` per MCP tool, registered via `registry.register(adapter)`. The LLM sees a flat, unified list of tools with no knowledge of which are custom vs MCP-sourced.
+
+---
+
+## Tool Manifest Configuration Structure
+
+The manifest file (`tools.yaml`) declares which built-in tools are active and which MCP servers to connect to at startup. This follows the de-facto standard convention used by Claude Desktop, VS Code, LibreChat, and Roo Code:
+
+```yaml
+# tools.yaml — Jarvis tool manifest
+# Controls which built-in tools are active and which MCP servers to connect to.
+
+builtIn:
+  enabled:
+    - get-current-time
+    - save-memory
+    - search-memories
+    - web-search
+    - web-scrape
+    - execute-command
+    - schedule-task
+    - gws-calendar
+    - gws-gmail
+    - gws-drive
+    - gws-sheets
+    - bitbucket-prs
+
+mcpServers:
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/max/Documents"]
+    env: {}
+
+  # github:
+  #   type: stdio
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-github"]
+  #   env:
+  #     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+
+  # remote-example:
+  #   type: streamable-http
+  #   url: "https://mcp.example.com/mcp"
+  #   disabled: true
+```
+
+**Manifest fields per server:**
+
+| Field | Required | Values | Purpose |
+|-------|----------|--------|---------|
+| `type` | Yes | `stdio`, `streamable-http`, `sse` | Selects transport class |
+| `command` | For `stdio` | string | Executable to spawn |
+| `args` | For `stdio` | string[] | Arguments to `command` |
+| `env` | No | object | Extra env vars for subprocess |
+| `url` | For `streamable-http`/`sse` | string | Server endpoint |
+| `disabled` | No | boolean | Skip server at startup without removing config |
+| `timeout` | No | number (ms) | Per-request timeout override (default: 30000) |
+
+This structure is intentionally compatible with `claude_desktop_config.json` — MCP servers configured for Claude Desktop can be copy-pasted into the Jarvis manifest.
+
+---
+
+## Installation
+
+```bash
+# Required: MCP client SDK + zod peer dependency
+npm install @modelcontextprotocol/sdk zod
+
+# Optional: YAML manifest support (skip if using JSON config)
+npm install yaml
+```
+
+No new dev dependencies needed — `@modelcontextprotocol/sdk` ships TypeScript declarations.
+
+---
+
+## What NOT to Add (v1.1 Scope)
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `@modelcontextprotocol/sdk` v2 | Pre-alpha, breaking API changes, no production endorsement. v2 changes import paths and auth API. | `^1.11.0` — stable, maintained, production-endorsed |
+| `@automatalabs/mcp-client-manager` | Third-party wrapper over the SDK; low adoption; hides lifecycle control you need (startup ordering, per-server reconnect). | Write a thin `McpClientManager` class in-project using the SDK `Client` directly |
+| Any HTTP server framework (Fastify, Hono, Express) | Not needed to *consume* remote MCP servers — `StreamableHTTPClientTransport` handles outbound HTTP. | Just the transport class from the SDK |
+| Zod as a direct app dependency for manifest validation | The peer dep from the MCP SDK already satisfies this. Adding zod schemas for the manifest config is over-engineering for a human-controlled personal agent config. | TypeScript interface + type assertion at config load boundary |
+| `js-yaml` | Requires `@types/js-yaml` separately; older API surface. | `yaml@^2.7.0` — ESM-native, types built-in, active maintenance |
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| `@modelcontextprotocol/sdk` v1.x | v2 pre-alpha | Only after stable v2 release (anticipated Q2 2026) |
+| `yaml` package | JSON-only manifest (no dep) | If comments in the config are not needed — eliminates the dependency entirely |
+| Custom `McpClientManager` (in-project) | `@automatalabs/mcp-client-manager` | If you want zero custom management code and accept reduced lifecycle control |
+| `StdioClientTransport` for local servers | Docker-based MCP server isolation | If security model requires subprocess isolation — out of scope for personal Mac agent |
+
+---
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `@modelcontextprotocol/sdk@^1.11.0` | Node.js `>=18` | Project runs Node.js 22 — fully compatible |
+| `@modelcontextprotocol/sdk@^1.11.0` | `"type": "module"` (ESM) | SDK is ESM-first; project already has `"type": "module"` — no shim needed. Import with `.js` extension: `import { Client } from "@modelcontextprotocol/sdk/client/index.js"` |
+| `@modelcontextprotocol/sdk@^1.11.0` | `zod@^3.25.0` or `zod@^4.0.0` | SDK's peer dep allows both; `zod@^3.25.0` is the safer floor for a new install |
+| `yaml@^2.7.0` | ESM, Node.js 14+ | ESM-native, no compatibility issues |
+
+---
+
+## Sources
+
+- [npmjs.com/@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk) — latest stable 1.x, peer dependency requirements — HIGH confidence
+- [github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/client.md](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/client.md) — `Client` API, `StdioClientTransport`, `StreamableHTTPClientTransport`, `SSEClientTransport`, tool listing and calling — HIGH confidence
+- [github.com/modelcontextprotocol/typescript-sdk/releases](https://github.com/modelcontextprotocol/typescript-sdk/releases) — v1.x stable, v2 pre-alpha status — HIGH confidence
+- [modelcontextprotocol.io/specification/2025-03-26/basic/transports](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports) — official spec: stdio + Streamable HTTP standard; SSE deprecated — HIGH confidence
+- [npmjs.com/package/yaml](https://www.npmjs.com/package/yaml) — v2.x ESM-native — MEDIUM confidence
+- [librechat.ai MCP server config structure](https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers) — manifest field conventions — MEDIUM confidence (third-party implementation of de-facto standard)
+
+---
+
+# v1.0: Web, Shell, Scheduling, Supervisor (EXISTING — Do Not Modify)
+
+> This section documents the v1.0 stack decisions. Already shipped. Included for historical record.
 
 ## Context
 
-This research covers only the NEW capability additions. The existing stack (grammy, better-sqlite3, OpenRouter via fetch, tsx) is already in production and is not re-evaluated here. The four capability domains are:
-
-1. Web search (agent needs external knowledge)
-2. Web scraping (agent needs to read arbitrary URLs)
-3. Code/shell execution with security (agent needs to run commands)
-4. Task scheduling (agent needs temporal autonomy)
-5. Supervisor enhancements (health checks, auto-update, graceful shutdown)
+Four capability domains added in v1.0:
+1. Web search
+2. Web scraping
+3. Code/shell execution with security
+4. Task scheduling
+5. Supervisor enhancements
 
 ---
 
@@ -65,14 +283,6 @@ Use `child_process.execFile` (not `exec`, not `spawn` with `shell: true`). `exec
 - A per-tool permission manifest checked before execution
 - Human approval via Telegram for any tool flagged as high-risk
 
-**For LLM-generated JavaScript (optional, future):**
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `isolated-vm` | `^6.0.2` | Secure V8 isolate for running generated JS | Uses V8's native Isolate API (not Node's vm module). Supported by Rocket.Chat, Screeps, TripAdvisor. Pre-built binaries for macOS ARM64. Requires `--no-node-snapshot` flag on Node.js >= 20. In maintenance mode but actively receiving Node.js version support. |
-
-**Note on `isolated-vm` startup requirement:** When using Node.js 20+, the process must be started with `--no-node-snapshot`. This means `tsx watch src/index.ts` must become `tsx --no-node-snapshot watch src/index.ts`. The existing supervisor launch command must be updated accordingly.
-
 **Confidence:** HIGH — vm2 CVE confirmed via HackerNews/Endor Labs Jan 2026. isolated-vm v6.0.2 confirmed from GitHub releases page. `execFile` recommendation from official Node.js security guidance.
 
 ### Task Scheduling
@@ -82,39 +292,24 @@ Use `child_process.execFile` (not `exec`, not `spawn` with `shell: true`). `exec
 | `croner` | `^10.0.1` | In-process cron scheduler | Zero dependencies. TypeScript-native. Supports full cron syntax including seconds and year fields, timezone targeting, pause/resume/stop, and async handlers. Used by PM2, ZWave JS, Uptime Kuma. v10.0.0 added OCPS 1.4 compliance and DST fixes. Works in-process — no external process or database needed. |
 
 **Why not alternatives:**
-- `node-cron`: No timezone support, no pause/resume, no browser/Deno compat, last meaningful update was years ago. MEDIUM confidence.
-- `toad-scheduler`: Good for simple intervals (`every 5 minutes`) but requires croner anyway for cron syntax. Adds a layer with no benefit here.
-- `node-schedule`: More stars but larger surface area and slower to adopt new Node.js versions.
+- `node-cron`: No timezone support, no pause/resume, no browser/Deno compat, last meaningful update was years ago.
+- `toad-scheduler`: Good for simple intervals but requires croner anyway for cron syntax.
+- `node-schedule`: More stars but larger surface area.
 - Agenda/Bull: Require Redis or MongoDB — unnecessary infrastructure for a single-process personal agent.
-
-**Confidence:** HIGH — croner v10.0.1 confirmed from npm search result (1 month ago).
 
 ### Supervisor Enhancements
 
-The existing supervisor (`src/supervisor.ts`) handles crash recovery with exponential backoff. It needs three additions: hang detection, auto-update on git changes, and graceful shutdown. All implemented without new dependencies where possible.
+All implemented without new dependencies using Node.js built-ins:
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| `child_process` (built-in) | Node.js 22 built-in | Spawn bot subprocess, detect hang | Already used by the supervisor. Add a heartbeat ping from bot → supervisor via IPC (`process.send`) to detect hangs (no response in N seconds = restart). No new library needed. |
-| `node:fs/promises` + `child_process.execSync` | Built-in | Detect git changes for auto-update | Poll `git rev-parse HEAD` on an interval (every 60s) from within the supervisor. If HEAD changed since last check, trigger the existing update flow. No library needed. |
-| SIGTERM handler (built-in) | Node.js 22 built-in | Graceful shutdown | Register `process.on('SIGTERM', ...)` in `src/index.ts`. Complete in-flight LLM calls (max timeout), flush SQLite WAL, close grammy gracefully, then `process.exit(0)`. Pattern: 5-8 second timeout, then force exit. |
-
-**Why not PM2:** Project constraint says "improve existing supervisor, not replace it." PM2 is also overkill for a single personal-use process on a Mac.
-
-**Confidence:** HIGH — all patterns are built-in Node.js APIs; no version research needed.
+| `child_process` (built-in) | Node.js 22 | Spawn bot subprocess, detect hang via IPC heartbeat | Already used by supervisor |
+| `node:fs/promises` + `child_process.execSync` | Built-in | Detect git changes for auto-update | Poll `git rev-parse HEAD` every 60s |
+| SIGTERM handler (built-in) | Node.js 22 | Graceful shutdown | Complete in-flight calls, flush SQLite WAL, close grammy |
 
 ---
 
-## Supporting Libraries
-
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `@types/cheerio` | bundled in `cheerio@1.x` | TypeScript types for cheerio | Included automatically in cheerio 1.x — no separate install needed |
-| `@types/axios` | bundled in `axios@1.x` | TypeScript types | Included in axios 1.x — no separate install needed |
-
----
-
-## Installation
+## Installation (v1.0)
 
 ```bash
 # Web search + scraping
@@ -122,63 +317,11 @@ npm install @tavily/core axios cheerio
 
 # Task scheduling
 npm install croner
-
-# Code execution sandbox (only if LLM-generated JS feature is built)
-npm install isolated-vm
-```
-
-**If isolated-vm is added**, update `package.json` scripts:
-```json
-"start:bot": "node --no-node-snapshot --import tsx src/index.ts"
 ```
 
 ---
 
-## Alternatives Considered
-
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `@tavily/core` | Brave Search REST API | When Tavily quota is exhausted (1,000 free/month) or you want zero vendor lock-in |
-| `@tavily/core` | SerpAPI | When you need multi-engine results (Google, Bing, DuckDuckGo) for SEO-type queries — overkill for a personal agent |
-| `child_process.execFile` + allow-list | `isolated-vm` for shell | Only if the threat model requires running untrusted LLM-generated shell scripts — not needed here since agent runs owned scripts |
-| `croner` | `node-cron` | If you never need timezone support and prefer the 5M weekly downloads of node-cron over croner's 300K |
-| `axios` | native `fetch` | Use native fetch if Node.js 22+ native fetch is sufficient — axios is preferred here for timeout control and automatic error handling in tool context |
-
----
-
-## What NOT to Use
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `vm2` | CVE-2026-22709 (CVSS 9.8) disclosed Jan 2026 — sandbox escape in resurrected version. Over 20 known escapes historically. | `isolated-vm` for JS sandboxing, `execFile` + allow-list for shell |
-| `node:vm` | Node.js official docs state it is NOT a security sandbox. Isolates only the context, not resources. | `isolated-vm` |
-| `child_process.exec` | Invokes `/bin/sh` — shell metacharacters enable injection. Never use with any dynamic input. | `child_process.execFile` |
-| `child_process.spawn` with `shell: true` | Same issue as exec — spawns a shell. | `spawn` with `shell: false` (default) |
-| Playwright / Puppeteer | Full browser runtime (200+ MB, 2-3s cold start) for a use case that is 90% static HTML. | `axios` + `cheerio` |
-| Agenda / Bull | Require Redis or MongoDB. No persistence needed for an in-process personal agent. | `croner` |
-| PM2 | Replaces the existing supervisor entirely. Out-of-scope per project constraints. | Extend existing `src/supervisor.ts` |
-
----
-
-## Stack Patterns by Variant
-
-**If the agent only executes pre-written scripts (current scope):**
-- Use `execFile` + allow-list. No sandbox library needed.
-- Because the executable set is known and owned by the developer.
-
-**If the agent executes LLM-generated JavaScript code (future scope):**
-- Add `isolated-vm` for JS execution.
-- Start Node with `--no-node-snapshot`.
-- Because you cannot trust LLM output as safe code.
-
-**If the agent needs to scrape JavaScript-heavy SPAs:**
-- Add Playwright (headless Chromium) as an optional, lazy-loaded path.
-- Only instantiate a browser for URLs that fail cheerio extraction.
-- Because running a browser for every scrape is too expensive.
-
----
-
-## Version Compatibility
+## Version Compatibility (v1.0)
 
 | Package | Compatible With | Notes |
 |---------|-----------------|-------|
@@ -186,25 +329,18 @@ npm install isolated-vm
 | `@tavily/core@0.7.2` | Node.js >= 18 | ESM only (matches project `"type": "module"`) |
 | `cheerio@1.2.0` | Node.js 18+ | ESM + CJS, TypeScript bundled |
 | `axios@1.8.x` | Node.js 18+ | Dual CJS/ESM, TypeScript bundled |
-| `isolated-vm@6.0.2` | Node.js 20, 22 (with `--no-node-snapshot`) | Native module, needs C++ compiler, pre-built binaries available for macOS ARM64 |
 
 ---
 
-## Sources
+## v1.0 Sources
 
-- Tavily npm: https://www.npmjs.com/package/@tavily/core — version 0.7.2, published ~20 days ago (MEDIUM confidence)
-- Tavily GitHub: https://github.com/tavily-ai/tavily-js — official SDK
-- Cheerio: https://cheerio.js.org/blog/cheerio-1.0 — 1.0 release details; npm search confirms 1.2.0 (HIGH confidence)
+- Tavily npm: https://www.npmjs.com/package/@tavily/core — version 0.7.2 (MEDIUM confidence)
+- Cheerio: https://cheerio.js.org/blog/cheerio-1.0 — 1.0 release details (HIGH confidence)
 - isolated-vm GitHub releases: https://github.com/laverdet/isolated-vm/releases — v6.0.2 October 2025 (HIGH confidence)
-- isolated-vm `--no-node-snapshot` issue: https://github.com/laverdet/isolated-vm/issues/420 (HIGH confidence)
 - vm2 CVE-2026-22709: https://www.endorlabs.com/learn/cve-2026-22709-critical-sandbox-escape-in-vm2-enables-arbitrary-code-execution (HIGH confidence)
-- vm2 resurrection notice: https://github.com/patriksimek/vm2 (MEDIUM confidence)
-- croner v10.0.0/10.0.1: https://www.npmjs.com/package/croner — last published 1 month ago (HIGH confidence)
-- croner GitHub: https://github.com/Hexagon/croner (HIGH confidence)
+- croner v10.0.0/10.0.1: https://www.npmjs.com/package/croner (HIGH confidence)
 - Node.js execFile security: https://securecodingpractices.com/prevent-command-injection-node-js-child-process-safer-execution-with-execfile/ (HIGH confidence)
-- Brave Search pricing change: https://www.implicator.ai/brave-drops-free-search-api-tier-puts-all-developers-on-metered-billing/ (HIGH confidence)
-- Scheduler comparison: https://betterstack.com/community/guides/scaling-nodejs/best-nodejs-schedulers/ (MEDIUM confidence)
 
 ---
 *Stack research for: Jarvis personal AI agent capability expansion*
-*Researched: 2026-03-18*
+*v1.0 researched: 2026-03-18 | v1.1 MCP additions researched: 2026-03-19*

@@ -46,6 +46,9 @@ import {
 } from "./scheduler/scheduler-manager.js";
 import type { SchedulerDeps } from "./scheduler/types.js";
 import { getPendingRestart } from "./restart-signal.js";
+import { loadToolManifest, setManifestApprovalGate, setManifestSendApproval, setManifestSendResult } from "./tools/manifest-loader.js";
+import { loadMcpConfig } from "./tools/mcp-config-loader.js";
+import { McpManager } from "./mcp/mcp-manager.js";
 
 async function main() {
   log("info", "startup", "Starting Jarvis...");
@@ -127,6 +130,29 @@ async function main() {
   toolRegistry.register(manageScheduledTaskTool);
   log("info", "startup", "Scheduler tools enabled (create, list, delete, manage)");
 
+  const builtInCount = toolRegistry.getDefinitions().length;
+
+  // Load manifest tools (after built-ins — built-ins have collision priority)
+  loadToolManifest(toolRegistry);
+
+  const manifestCount = toolRegistry.getDefinitions().length - builtInCount;
+
+  // Connect MCP servers via McpManager (parallel startup)
+  const mcpConfigs = loadMcpConfig();
+  const mcpManager = new McpManager(mcpConfigs);
+  const mcpSummary = await mcpManager.connectAll(toolRegistry);
+
+  // SEC-05: Per-source tool count logging
+  const totalCount = toolRegistry.getDefinitions().length;
+  log("info", "startup", `Tools registered: ${builtInCount} built-in, ${manifestCount} manifest, ${mcpSummary.toolsRegistered} MCP = ${totalCount} total`);
+
+  if (totalCount > 30) {
+    log("warn", "startup", `Tool count exceeds 30 (${totalCount}) — context window budget may be impacted`);
+  }
+
+  // Derive hasMcpTools from actual registered tools (not config count)
+  const hasMcpTools = mcpSummary.toolsRegistered > 0;
+
   // 4. Initialize LLM with model tiers
   const llm = new OpenRouterProvider(
     config.openrouter.apiKey,
@@ -152,6 +178,15 @@ async function main() {
     telegram.sendMessage(userId, text),
   );
 
+  // Wire approval gate for manifest tool approvals (same gate as execute_command)
+  setManifestApprovalGate(approvalGate);
+  setManifestSendApproval((userId, text, approvalId) =>
+    telegram.sendApprovalMessage(userId, text, approvalId),
+  );
+  setManifestSendResult((userId, text) =>
+    telegram.sendMessage(userId, text),
+  );
+
   // In-flight agent tracking for graceful shutdown (SUP-01)
   let inFlightCount = 0;
   let shutdownRequested = false;
@@ -174,6 +209,7 @@ async function main() {
           sessionId,
           userMessage: msg.text,
           attachments: msg.attachments,
+          hasMcpTools,
         },
         llm,
         toolRegistry,
@@ -299,6 +335,9 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
 
     // 3. Stop scheduler (no new tasks will fire)
     stopScheduler();
+
+    // 3b. Disconnect MCP servers
+    await mcpManager.disconnectAll();
 
     // 4. Wait for in-flight agent runs (up to 15 seconds)
     if (inFlightCount > 0) {

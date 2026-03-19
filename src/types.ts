@@ -24,6 +24,7 @@ export interface AgentContext {
   sessionId: string;
   userMessage: string;
   attachments?: { filePath: string; fileName: string }[];
+  hasMcpTools?: boolean;
 }
 
 export interface AgentResponse {

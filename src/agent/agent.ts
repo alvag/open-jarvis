@@ -24,6 +24,7 @@ export async function runAgent(
     context.userId,
     context.userMessage,
     memoryManager,
+    context.hasMcpTools ?? false,
   );
 
   // Load session history
