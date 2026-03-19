@@ -27,7 +27,7 @@ Requirements for MCP client integration and tool manifest. Each maps to roadmap 
 
 ### Security & Resilience
 
-- [ ] **SEC-01**: MCP tool descriptions are truncated at 500 chars to limit poisoning surface
+- [x] **SEC-01**: MCP tool descriptions are truncated at 500 chars to limit poisoning surface
 - [ ] **SEC-02**: System prompt frames MCP tool descriptions as untrusted external content
 - [x] **SEC-03**: Tool name collision validation prevents MCP tools from shadowing custom tools
 - [x] **SEC-04**: stdio child process crashes are isolated and don't propagate to agent loop
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MCP-07 | Phase 6 | Complete |
 | MCP-08 | Phase 6 | Complete |
 | MCP-09 | Phase 6 | Complete |
-| SEC-01 | Phase 7 | Pending |
+| SEC-01 | Phase 7 | Complete |
 | SEC-02 | Phase 7 | Pending |
 | SEC-03 | Phase 6 | Complete |
 | SEC-04 | Phase 6 | Complete |

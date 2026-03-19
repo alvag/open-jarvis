@@ -81,4 +81,4 @@ Plans:
 | 4. Supervisor Improvements | v1.0 | 3/3 | Complete | 2026-03-19 |
 | 5. Tool Manifest | v1.1 | 1/1 | Complete | 2026-03-19 |
 | 6. MCP Client Layer | v1.1 | 2/2 | Complete | 2026-03-19 |
-| 7. MCP Integration | v1.1 | 0/2 | Not started | - |
+| 7. MCP Integration | 1/2 | In Progress|  | - |

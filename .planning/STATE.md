@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
 status: unknown
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-19T13:48:16.569Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-19T14:21:15.632Z"
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** Jarvis debe ser un asistente personal confiable que ejecuta tareas de forma autónoma sin comprometer la seguridad del sistema donde corre.
-**Current focus:** Phase 06 — mcp-client-layer
+**Current focus:** Phase 07 — mcp-integration
 
 ## Current Position
 
-Phase: 06 (mcp-client-layer) — EXECUTING
+Phase: 07 (mcp-integration) — EXECUTING
 Plan: 2 of 2
 
 ## Performance Metrics
@@ -45,6 +45,7 @@ Plan: 2 of 2
 | Phase 05-tool-manifest P01 | 4min | 3 tasks | 7 files |
 | Phase 06 P01 | 2min | 2 tasks | 3 files |
 | Phase 06 P02 | 3min | 2 tasks | 2 files |
+| Phase 07-mcp-integration P01 | 8min | 2 tasks | 2 files |
 
 ### Decisions
 
@@ -65,6 +66,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 06]: callTool uses ORIGINAL (unprefixed) tool name — MCP server has no awareness of registry namespace prefix
 - [Phase 06]: MCP connection loop placed between loadToolManifest and LLM init to maintain built-in > manifest > MCP tool priority order
 - [Phase 06]: MCP disconnect in shutdown step 3b (after stopScheduler, before in-flight wait)
+- [Phase 07-01]: Connection timeout (CONNECT_TIMEOUT_MS = 10_000) applied inside McpManager.connectOne() via Promise.race — not externally in index.ts
+- [Phase 07-01]: connectAll() returns McpStartupSummary without logging — index.ts owns the consolidated startup log
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T13:48:16.566Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-mcp-integration/07-CONTEXT.md
+Last session: 2026-03-19T14:21:15.629Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
