@@ -22,7 +22,7 @@
 **Milestone Goal:** Jarvis can consume tools from external MCP servers declared in a manifest file, while custom tools continue to work unchanged in a unified hybrid agent loop.
 
 - [x] **Phase 5: Tool Manifest** — Declarative JSON manifest with env var substitution controls which tools and MCP servers are active (completed 2026-03-19)
-- [ ] **Phase 6: MCP Client Layer** — Single-server client + tool adapter with transport hardening, namespace prefixing, and schema normalization
+- [x] **Phase 6: MCP Client Layer** — Single-server client + tool adapter with transport hardening, namespace prefixing, and schema normalization (completed 2026-03-19)
 - [ ] **Phase 7: MCP Integration** — Multi-server manager wired into index.ts; tool poisoning defenses and context budget guard embedded
 
 ## Phase Details
@@ -80,5 +80,5 @@ Plans:
 | 3. Scheduled Tasks | v1.0 | 3/3 | Complete | 2026-03-18 |
 | 4. Supervisor Improvements | v1.0 | 3/3 | Complete | 2026-03-19 |
 | 5. Tool Manifest | v1.1 | 1/1 | Complete | 2026-03-19 |
-| 6. MCP Client Layer | 1/2 | In Progress|  | - |
+| 6. MCP Client Layer | 2/2 | Complete   | 2026-03-19 | - |
 | 7. MCP Integration | v1.1 | 0/2 | Not started | - |

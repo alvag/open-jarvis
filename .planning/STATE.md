@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: MCP Tools & Tool Manifest
 status: unknown
-stopped_at: Completed 06-01-PLAN.md — McpClient implementation
-last_updated: "2026-03-19T12:57:00.947Z"
+stopped_at: Completed 06-02-PLAN.md — MCP tool adapter and index wiring
+last_updated: "2026-03-19T13:03:09.567Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -44,6 +44,7 @@ Plan: 2 of 2
 
 | Phase 05-tool-manifest P01 | 4min | 3 tasks | 7 files |
 | Phase 06 P01 | 2min | 2 tasks | 3 files |
+| Phase 06 P02 | 3min | 2 tasks | 2 files |
 
 ### Decisions
 
@@ -61,6 +62,9 @@ Recent decisions affecting v1.1 work:
 - [Phase 06]: onclose callback checks isAlive before logging to suppress spurious warnings on clean disconnect
 - [Phase 06]: Connection timeout applied externally via Promise.race in index.ts, not inside McpClient
 - [Phase 06]: process.env merged first in stdio env to ensure full PATH/NODE_PATH inheritance for npx-based servers
+- [Phase 06]: callTool uses ORIGINAL (unprefixed) tool name — MCP server has no awareness of registry namespace prefix
+- [Phase 06]: MCP connection loop placed between loadToolManifest and LLM init to maintain built-in > manifest > MCP tool priority order
+- [Phase 06]: MCP disconnect in shutdown step 3b (after stopScheduler, before in-flight wait)
 
 ### Pending Todos
 
@@ -73,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-19T12:57:00.945Z
-Stopped at: Completed 06-01-PLAN.md — McpClient implementation
+Last session: 2026-03-19T13:03:09.564Z
+Stopped at: Completed 06-02-PLAN.md — MCP tool adapter and index wiring
 Resume file: None
