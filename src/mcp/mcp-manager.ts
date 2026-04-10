@@ -15,7 +15,9 @@ import { McpClient } from "./mcp-client.js";
 import { adaptMcpTools } from "./mcp-tool-adapter.js";
 import type { McpServerConfig } from "../tools/mcp-config-loader.js";
 import type { ToolRegistry } from "../tools/tool-registry.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("mcp");
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
@@ -109,18 +111,12 @@ export class McpManager {
         registered++;
       } catch (err) {
         // ToolRegistry.register() throws on duplicate name — log and skip
-        log("warn", "mcp", `Tool name collision: ${tool.definition.name} — skipping`, {
-          server: cfg.name,
-          error: (err as Error).message,
-        });
+        log.warn({ server: cfg.name, error: (err as Error).message }, `Tool name collision: ${tool.definition.name} — skipping`);
       }
     }
 
     this.clients.push(client);
-    log("info", "mcp", `Connected: ${cfg.name}`, {
-      toolsRegistered: registered,
-      totalExposed: tools.length,
-    });
+    log.info({ toolsRegistered: registered, totalExposed: tools.length }, `Connected: ${cfg.name}`);
 
     return registered;
   }
@@ -132,6 +128,6 @@ export class McpManager {
    */
   async disconnectAll(): Promise<void> {
     await Promise.allSettled(this.clients.map((c) => c.disconnect()));
-    log("info", "shutdown", "MCP connections closed");
+    log.info("MCP connections closed");
   }
 }

@@ -28,7 +28,9 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("mcp-config");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,11 +65,7 @@ function substituteEnvVars(value: string, serverName: string): string | null {
   const result = value.replace(VAR_PATTERN, (_, varName: string) => {
     const val = process.env[varName];
     if (val === undefined) {
-      log(
-        "error",
-        "mcp-config-loader",
-        `Undefined env var "\${${varName}}" in server "${serverName}" — skipping server`,
-      );
+      log.error(`Undefined env var "\${${varName}}" in server "${serverName}" — skipping server`);
       ok = false;
       return "";
     }
@@ -102,9 +100,7 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
   const resolved = resolve(mcpConfigPath ?? process.env.MCP_CONFIG_PATH ?? "./mcp_config.json");
 
   if (!existsSync(resolved)) {
-    log("info", "mcp-config-loader", "mcp_config.json not found — no MCP servers configured", {
-      path: resolved,
-    });
+    log.info({ path: resolved }, "mcp_config.json not found — no MCP servers configured");
     return [];
   }
 
@@ -112,10 +108,7 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
   try {
     raw = JSON.parse(readFileSync(resolved, "utf-8")) as RawMcpConfig;
   } catch (err) {
-    log("error", "mcp-config-loader", "Failed to parse mcp_config.json — no MCP servers configured", {
-      path: resolved,
-      error: (err as Error).message,
-    });
+    log.error({ path: resolved, error: (err as Error).message }, "Failed to parse mcp_config.json — no MCP servers configured");
     return [];
   }
 
@@ -125,7 +118,7 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
     typeof raw.mcpServers !== "object" ||
     raw.mcpServers === null
   ) {
-    log("info", "mcp-config-loader", "No mcpServers key found in mcp_config.json");
+    log.info("No mcpServers key found in mcp_config.json");
     return [];
   }
 
@@ -134,7 +127,7 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
   for (const [name, entry] of Object.entries(raw.mcpServers)) {
     // Skip disabled servers
     if (entry.enabled === false) {
-      log("info", "mcp-config-loader", `MCP server "${name}" is disabled — skipping`);
+      log.info(`MCP server "${name}" is disabled — skipping`);
       continue;
     }
 
@@ -143,21 +136,21 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
 
     // Validate type
     if (type !== "stdio" && type !== "streamable-http") {
-      log("error", "mcp-config-loader", `Unknown server type "${type}" for "${name}" — skipping`);
+      log.error(`Unknown server type "${type}" for "${name}" — skipping`);
       continue;
     }
 
     // Type-specific field validation
     if (type === "stdio") {
       if (typeof entry.command !== "string" || entry.command.trim() === "") {
-        log("error", "mcp-config-loader", `stdio server "${name}" missing command field — skipping`);
+        log.error(`stdio server "${name}" missing command field — skipping`);
         continue;
       }
     }
 
     if (type === "streamable-http") {
       if (typeof entry.url !== "string" || entry.url.trim() === "") {
-        log("error", "mcp-config-loader", `streamable-http server "${name}" missing url field — skipping`);
+        log.error(`streamable-http server "${name}" missing url field — skipping`);
         continue;
       }
     }
@@ -208,7 +201,7 @@ export function loadMcpConfig(mcpConfigPath?: string): McpServerConfig[] {
       env: resolvedEnv,
     });
 
-    log("info", "mcp-config-loader", `Loaded MCP server config: ${name}`, { type });
+    log.info({ type }, `Loaded MCP server config: ${name}`);
   }
 
   return servers;

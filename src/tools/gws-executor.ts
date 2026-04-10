@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("gws");
 
 const GWS_TIMEOUT = 30_000;
 
@@ -8,7 +10,7 @@ export async function runGws(args: string[]): Promise<unknown> {
     execFile("gws", args, { timeout: GWS_TIMEOUT }, (error, stdout, stderr) => {
       if (error) {
         const msg = stderr?.trim() || error.message;
-        log("error", "gws", `gws ${args.join(" ")} failed`, { error: msg });
+        log.error({ error: msg }, `gws ${args.join(" ")} failed`);
 
         if (msg.includes("command not found") || msg.includes("ENOENT")) {
           reject(new Error("gws CLI is not installed. Install with: npm i -g @googleworkspace/cli"));

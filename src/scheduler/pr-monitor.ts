@@ -5,7 +5,9 @@ import {
   type BitbucketActivityItem,
 } from "../tools/bitbucket-api.js";
 import { config } from "../config.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("pr-monitor");
 
 interface PrStateRow {
   pr_id: number;
@@ -185,11 +187,9 @@ export async function checkPRChanges(
       }
     }
 
-    log("info", "pr-monitor", "PR check complete", { prsChecked });
+    log.info({ prsChecked }, "PR check complete");
   } catch (err) {
-    log("error", "pr-monitor", "PR check failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.error({ error: err instanceof Error ? err.message : String(err) }, "PR check failed");
     // Do NOT re-throw — PR monitor failures should not crash the scheduler
   }
 }

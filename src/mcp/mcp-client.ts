@@ -13,16 +13,18 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpServerConfig } from "../tools/mcp-config-loader.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
 
 export class McpClient {
   readonly name: string;
   private client: Client;
   private transport: StdioClientTransport | StreamableHTTPClientTransport;
   private _isAlive: boolean = false;
+  private log;
 
   constructor(config: McpServerConfig) {
     this.name = config.name;
+    this.log = createLogger(`mcp:${config.name}`);
     this.client = new Client({ name: "jarvis", version: "1.0.0" });
 
     if (config.type === "stdio") {
@@ -38,7 +40,7 @@ export class McpClient {
 
       // Wire stderr capture for debug logging
       this.transport.stderr?.on("data", (chunk: Buffer) => {
-        log("debug", `mcp:${this.name}`, chunk.toString().trimEnd());
+        this.log.debug(chunk.toString().trimEnd());
       });
     } else {
       this.transport = new StreamableHTTPClientTransport(new URL(config.url!), {
@@ -64,13 +66,13 @@ export class McpClient {
       if (this._isAlive) {
         // Only log warning for unexpected disconnections.
         // disconnect() sets _isAlive = false first, so clean shutdowns are silent.
-        log("warn", `mcp:${this.name}`, "Server disconnected");
+        this.log.warn("Server disconnected");
       }
       this._isAlive = false;
     };
 
     this.transport.onerror = (err: Error) => {
-      log("error", `mcp:${this.name}`, "Transport error", { error: err.message });
+      this.log.error({ error: err.message }, "Transport error");
     };
 
     await this.client.connect(this.transport);

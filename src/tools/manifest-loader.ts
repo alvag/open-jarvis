@@ -30,7 +30,9 @@ import type { Tool, ToolResult, JsonSchema } from "./tool-types.js";
 import type { ToolRegistry } from "./tool-registry.js";
 import { classifyCommand, getBlockReason } from "../security/command-classifier.js";
 import type { ApprovalGate } from "../security/approval-gate.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("manifest");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,10 +154,7 @@ function buildManifestTool(entry: ManifestEntry, handlerPath: string): Tool {
               await sendResultFn(userId, text);
             }
           } catch (err) {
-            log("error", "manifest-loader", "Background manifest tool execution failed", {
-              tool: entry.name,
-              error: (err as Error).message,
-            });
+            log.error({ tool: entry.name, error: (err as Error).message }, "Background manifest tool execution failed");
             if (sendResultFn) {
               await sendResultFn(userId, `Error running manifest tool \`${entry.name}\`: ${(err as Error).message}`);
             }
@@ -244,9 +243,7 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
   const resolved = resolve(manifestPath ?? process.env.MANIFEST_PATH ?? "./tool_manifest.json");
 
   if (!existsSync(resolved)) {
-    log("info", "manifest-loader", "tool_manifest.json not found — starting without manifest tools", {
-      path: resolved,
-    });
+    log.info({ path: resolved }, "tool_manifest.json not found — starting without manifest tools");
     return;
   }
 
@@ -254,17 +251,12 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
   try {
     parsed = JSON.parse(readFileSync(resolved, "utf-8"));
   } catch (err) {
-    log("error", "manifest-loader", "Failed to parse tool_manifest.json — starting without manifest tools", {
-      path: resolved,
-      error: (err as Error).message,
-    });
+    log.error({ path: resolved, error: (err as Error).message }, "Failed to parse tool_manifest.json — starting without manifest tools");
     return;
   }
 
   if (!Array.isArray(parsed)) {
-    log("error", "manifest-loader", "tool_manifest.json must be a JSON array — starting without manifest tools", {
-      path: resolved,
-    });
+    log.error({ path: resolved }, "tool_manifest.json must be a JSON array — starting without manifest tools");
     return;
   }
 
@@ -284,9 +276,7 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
       e.parameters === null ||
       typeof e.handler_path !== "string"
     ) {
-      log("error", "manifest-loader", "Invalid manifest entry — missing required fields, skipping", {
-        entry: typeof e.name === "string" ? e.name : "unknown",
-      });
+      log.error({ entry: typeof e.name === "string" ? e.name : "unknown" }, "Invalid manifest entry — missing required fields, skipping");
       continue;
     }
 
@@ -295,9 +285,7 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
     // Resolve handler path
     const handlerPath = resolve(validEntry.handler_path);
     if (!existsSync(handlerPath)) {
-      log("error", "manifest-loader", `Handler not found for tool "${validEntry.name}" — skipping`, {
-        handlerPath,
-      });
+      log.error({ handlerPath }, `Handler not found for tool "${validEntry.name}" — skipping`);
       continue;
     }
 
@@ -307,13 +295,9 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
     // Register — built-ins have collision priority
     try {
       registry.register(tool);
-      log("info", "manifest-loader", `Registered manifest tool: ${validEntry.name}`);
+      log.info(`Registered manifest tool: ${validEntry.name}`);
     } catch {
-      log(
-        "error",
-        "manifest-loader",
-        `Tool "${validEntry.name}" collides with existing tool — skipping (built-in has priority)`,
-      );
+      log.error(`Tool "${validEntry.name}" collides with existing tool — skipping (built-in has priority)`);
     }
   }
 }

@@ -4,7 +4,9 @@ import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
 import { buildSystemPrompt } from "./context-builder.js";
 import { classifyComplexity } from "../llm/model-router.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("agent");
 
 export async function runAgent(
   context: AgentContext,
@@ -68,12 +70,7 @@ export async function runAgent(
     const { message: response, model } = await llm.chat(messages, toolDefs, tier);
 
     if (i === 0) {
-      log("info", "router", `${complexity} → ${model}`, {
-        userId: context.userId,
-        userName: context.userName,
-        complexity,
-        model,
-      });
+      log.info({ userId: context.userId, userName: context.userName, complexity, model }, `${complexity} → ${model}`);
     }
 
     messages.push(response);
@@ -81,12 +78,7 @@ export async function runAgent(
 
     // No tool calls — we have the final answer
     if (!response.tool_calls || response.tool_calls.length === 0) {
-      log("info", "agent", "response complete", {
-        userId: context.userId,
-        durationMs: Date.now() - startTime,
-        toolsUsed,
-        iterations: i + 1,
-      });
+      log.info({ userId: context.userId, durationMs: Date.now() - startTime, toolsUsed, iterations: i + 1 }, "response complete");
       return {
         text: response.content || "I have nothing to say.",
         toolsUsed,

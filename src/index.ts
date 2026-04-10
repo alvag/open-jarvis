@@ -6,7 +6,9 @@ import { ToolRegistry } from "./tools/tool-registry.js";
 import { OpenRouterProvider } from "./llm/openrouter.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { runAgent } from "./agent/agent.js";
-import { log } from "./logger.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("main");
 
 // Built-in tools
 import getCurrentTime from "./tools/built-in/get-current-time.js";
@@ -51,7 +53,7 @@ import { loadMcpConfig } from "./tools/mcp-config-loader.js";
 import { McpManager } from "./mcp/mcp-manager.js";
 
 async function main() {
-  log("info", "startup", "Starting Jarvis...");
+  log.info("Starting Jarvis...");
 
   // 1. Initialize database
   const db = initDatabase(config.paths.database);
@@ -62,11 +64,7 @@ async function main() {
     config.agent.sessionRetentionDays,
   );
   if (deletedSessions > 0) {
-    log(
-      "info",
-      "startup",
-      `Cleaned up ${deletedSessions} old sessions (>${config.agent.sessionRetentionDays} days)`,
-    );
+    log.info(`Cleaned up ${deletedSessions} old sessions (>${config.agent.sessionRetentionDays} days)`);
   }
 
   // 2. Load personality
@@ -88,47 +86,47 @@ async function main() {
   // Google Workspace tools (conditional)
   if (config.google.enabled.drive) {
     toolRegistry.register(gwsDriveTool);
-    log("info", "startup", "Google Drive tool enabled");
+    log.info("Google Drive tool enabled");
   }
   if (config.google.enabled.gmail) {
     toolRegistry.register(gwsGmailTool);
-    log("info", "startup", "Google Gmail tool enabled");
+    log.info("Google Gmail tool enabled");
   }
   if (config.google.enabled.calendar) {
     toolRegistry.register(gwsCalendarTool);
-    log("info", "startup", "Google Calendar tool enabled");
+    log.info("Google Calendar tool enabled");
   }
   if (config.google.enabled.sheets) {
     toolRegistry.register(gwsSheetsTool);
-    log("info", "startup", "Google Sheets tool enabled");
+    log.info("Google Sheets tool enabled");
   }
 
   // Bitbucket tools (conditional)
   if (config.bitbucket.enabled) {
     toolRegistry.register(bitbucketPrsTool);
-    log("info", "startup", "Bitbucket PRs tool enabled");
+    log.info("Bitbucket PRs tool enabled");
   }
 
   // Web tools (conditional on API keys)
   if (config.tavily.enabled) {
     toolRegistry.register(webSearchTool);
-    log("info", "startup", "Web search tool enabled (Tavily)");
+    log.info("Web search tool enabled (Tavily)");
   }
   if (config.firecrawl.enabled) {
     toolRegistry.register(webScrapeTool);
-    log("info", "startup", "Web scrape tool enabled (Firecrawl)");
+    log.info("Web scrape tool enabled (Firecrawl)");
   }
 
   // Shell execution tool (always registered — security handled inside the tool)
   toolRegistry.register(executeCommandTool);
-  log("info", "startup", "Shell execution tool enabled (execute_command)");
+  log.info("Shell execution tool enabled (execute_command)");
 
   // Scheduler tools (always registered — scheduler handles enabled/disabled internally)
   toolRegistry.register(createScheduledTaskTool);
   toolRegistry.register(listScheduledTasksTool);
   toolRegistry.register(deleteScheduledTaskTool);
   toolRegistry.register(manageScheduledTaskTool);
-  log("info", "startup", "Scheduler tools enabled (create, list, delete, manage)");
+  log.info("Scheduler tools enabled (create, list, delete, manage)");
 
   const builtInCount = toolRegistry.getDefinitions().length;
 
@@ -144,10 +142,10 @@ async function main() {
 
   // SEC-05: Per-source tool count logging
   const totalCount = toolRegistry.getDefinitions().length;
-  log("info", "startup", `Tools registered: ${builtInCount} built-in, ${manifestCount} manifest, ${mcpSummary.toolsRegistered} MCP = ${totalCount} total`);
+  log.info(`Tools registered: ${builtInCount} built-in, ${manifestCount} manifest, ${mcpSummary.toolsRegistered} MCP = ${totalCount} total`);
 
   if (totalCount > 30) {
-    log("warn", "startup", `Tool count exceeds 30 (${totalCount}) — context window budget may be impacted`);
+    log.warn(`Tool count exceeds 30 (${totalCount}) — context window budget may be impacted`);
   }
 
   // Derive hasMcpTools from actual registered tools (not config count)
@@ -159,7 +157,7 @@ async function main() {
     config.openrouter.models,
   );
 
-  log("info", "startup", "Model tiers loaded", config.openrouter.models as unknown as Record<string, unknown>);
+  log.info({ models: config.openrouter.models }, "Model tiers loaded");
 
   // 5. Start Telegram channel
   const telegram = new TelegramChannel(
@@ -219,9 +217,7 @@ async function main() {
       );
 
       if (result.toolsUsed.length > 0) {
-        log("info", "tools", `${msg.userName} used tools`, {
-          tools: result.toolsUsed,
-        });
+        log.info({ tools: result.toolsUsed }, `${msg.userName} used tools`);
       }
 
       return { text: result.text, images: result.images };
@@ -233,7 +229,7 @@ async function main() {
     }
   });
 
-  log("info", "startup", "Jarvis is online. Listening for Telegram messages...");
+  log.info("Jarvis is online. Listening for Telegram messages...");
   await telegram.broadcast("Jarvis está online ✅");
 
   // Recover any pending approvals from before restart
@@ -284,7 +280,7 @@ Format the briefing as a single message with exactly these sections:
 Keep total under 300 words. Be concise and direct. If a tool fails or is unavailable, note it briefly and continue with the other sections.`,
           timezone: config.scheduler.timezone,
         });
-        log("info", "scheduler", "Seeded morning briefing task", { time: config.scheduler.briefingTime, timezone: config.scheduler.timezone });
+        log.info({ time: config.scheduler.briefingTime, timezone: config.scheduler.timezone }, "Seeded morning briefing task");
       }
     }
 
@@ -302,7 +298,7 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
           prompt: "Check Bitbucket PRs for changes and notify user of new commits, state changes, or direct mentions.",
           timezone: config.scheduler.timezone,
         });
-        log("info", "scheduler", "Seeded PR monitor task", { intervalMinutes: interval });
+        log.info({ intervalMinutes: interval }, "Seeded PR monitor task");
       }
     }
   }
@@ -315,14 +311,14 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
     heartbeatInterval = setInterval(() => {
       process.send!({ type: "heartbeat", ts: Date.now() });
     }, 10_000);
-    log("info", "startup", "IPC heartbeat started (10s interval)");
+    log.info("IPC heartbeat started (10s interval)");
   }
 
   // Graceful shutdown (SUP-01): 15s timeout, in-flight tracking
   const shutdown = async () => {
     if (shutdownRequested) return; // Prevent double-shutdown
     shutdownRequested = true;
-    log("info", "shutdown", "Shutting down Jarvis...");
+    log.info("Shutting down Jarvis...");
 
     // 1. Clear heartbeat interval first (prevent "channel closed" errors)
     if (heartbeatInterval) {
@@ -341,7 +337,7 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
 
     // 4. Wait for in-flight agent runs (up to 15 seconds)
     if (inFlightCount > 0) {
-      log("info", "shutdown", `Waiting for ${inFlightCount} in-flight agent run(s)...`);
+      log.info(`Waiting for ${inFlightCount} in-flight agent run(s)...`);
       await Promise.race([
         new Promise<void>((resolve) => { inFlightDone = resolve; }),
         new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
@@ -356,7 +352,7 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
 
     // 7. Exit with pending restart code or clean
     const code = getPendingRestart() ?? 0;
-    log("info", "shutdown", `Exiting with code ${code}`);
+    log.info(`Exiting with code ${code}`);
     process.exit(code);
   };
 
@@ -364,22 +360,23 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
   process.on("SIGTERM", () => { void shutdown(); });
 }
 
+function fatalExit(err: Error, evt: string): void {
+  log.fatal({ error: err.message, stack: err.stack }, evt);
+  // Flush async pino transport before exiting
+  log.flush(() => process.exit(1));
+  // Safety net: exit anyway after 2s if flush hangs
+  setTimeout(() => process.exit(1), 2000).unref();
+}
+
 process.on("uncaughtException", (err) => {
-  log("error", "fatal", "Uncaught exception", { error: err.message, stack: err.stack });
-  console.error("Uncaught exception:", err);
-  process.exit(1);
+  fatalExit(err, "Uncaught exception");
 });
 
 process.on("unhandledRejection", (reason) => {
-  const msg = reason instanceof Error ? reason.message : String(reason);
-  const stack = reason instanceof Error ? reason.stack : undefined;
-  log("error", "fatal", "Unhandled rejection", { error: msg, stack });
-  console.error("Unhandled rejection:", reason);
-  process.exit(1);
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  fatalExit(err, "Unhandled rejection");
 });
 
 main().catch((err) => {
-  log("error", "fatal", "Fatal error in main", { error: err.message, stack: err.stack });
-  console.error("Fatal error:", err);
-  process.exit(1);
+  fatalExit(err, "Fatal error in main");
 });
