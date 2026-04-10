@@ -4,6 +4,7 @@ import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
 import { buildSystemPrompt } from "./context-builder.js";
 import { classifyComplexity } from "../llm/model-router.js";
+import { matchByMessage, matchByTool } from "../skills/skill-loader.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger("agent");
@@ -20,13 +21,18 @@ export async function runAgent(
   const toolsUsed: string[] = [];
   const images: string[] = [];
 
-  // Build system prompt with personality + memories
+  // Proactive skill matching: load skills relevant to the user's message
+  const messageSkills = matchByMessage(context.userMessage);
+  const loadedSkills = new Set(messageSkills.map((s) => s.name));
+
+  // Build system prompt with personality + memories + matched skills
   const systemMessage = buildSystemPrompt(
     soulContent,
     context.userId,
     context.userMessage,
     memoryManager,
     context.hasMcpTools ?? false,
+    messageSkills,
   );
 
   // Load session history
@@ -119,6 +125,18 @@ export async function runAgent(
       messages.push(toolMessage);
       memoryManager.saveSessionMessage(context.sessionId, toolMessage);
       toolsUsed.push(toolCall.function.name);
+
+      // Reactive skill matching: inject skill for this tool if not already loaded
+      const toolSkills = matchByTool(toolCall.function.name).filter(
+        (s) => !loadedSkills.has(s.name),
+      );
+      for (const skill of toolSkills) {
+        loadedSkills.add(skill.name);
+        messages.push({
+          role: "system",
+          content: `## Skill: ${skill.name}\n${skill.content}`,
+        });
+      }
 
       // Collect image paths from tool results
       const resultData = result.data as Record<string, unknown> | null;
