@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-09
+
+### Added
+- **Retry con exponential backoff** (`src/llm/openrouter.ts`): reintentos automáticos en errores 429/5xx y fallos de red (timeout, DNS, socket reset). Max 3 retries con backoff (1s, 2s, 4s) + jitter. Respeta header `retry-after` en 429s
+- **Fetch timeout**: `AbortSignal.timeout(60s)` previene llamadas LLM colgadas indefinidamente
+- **Token usage logging** (`src/agent/agent.ts`): log estructurado de tokens por iteración y totales acumulados al completar respuesta
+
+### Changed
+- `LLMChatResult` (`src/llm/llm-provider.ts`) extiende con tipo `TokenUsage` y campo `usage?`
+- OpenRouter provider extrae y retorna `usage` de la respuesta de la API
+
 ## [1.2.0] - 2026-04-09
 
 ### Added

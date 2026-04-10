@@ -112,41 +112,23 @@ Mantener el agent loop custom. Es simple, funciona, y da control total. Foco en 
 
 ---
 
-### Fase 2: Tool Definition Format
+### Fase 2: LLM Resilience & Observability (v1.3)
 
-**Estado**: [ ] Pendiente
-**Dependencias**: Ninguna
+**Estado**: [x] Completada — v1.3 (2026-04-09)
 
-Migrar de formato simplificado a formato OpenAI API completo para alinearlo con MCP y estandares.
+Fase redefinida: la migración de formato de tools resultó innecesaria (el wrapping ya ocurre en el boundary). En su lugar, se implementaron mejoras reales al LLM provider.
 
-```typescript
-// ANTES (actual)
-{ name: "tool_name", description: "...", parameters: {...} }
-
-// DESPUES
-{ type: "function", function: { name: "tool_name", description: "...", parameters: {...} } }
-```
-
-**Archivos a modificar:**
-- `src/tools/tool-types.ts` — Cambiar interface `ToolDefinition` al formato wrapeado. Hacer `data` opcional en `ToolResult`
-- `src/tools/tool-registry.ts` — Actualizar acceso a `tool.definition.function.name`. Agregar metodos: `unregister(name)`, `has(name)`, `getToolNames()`, getter `size`
-- `src/llm/openrouter.ts` — Eliminar wrapping logic, pasar tools directo. Agregar retry con exponential backoff para errores 429/5xx. Agregar log de token usage
-- `src/llm/llm-provider.ts` — Agregar `updateModels?()` a la interface. Agregar campo `usage` a `LLMChatResult`
-- Todos los archivos en `src/tools/built-in/*.ts` — Actualizar `definition` al formato wrapeado
-- `src/tools/manifest-loader.ts` — Actualizar generacion de definitions
-- `src/mcp/mcp-tool-adapter.ts` — Actualizar conversion de MCP tools
-
-**Verificacion:**
-- [ ] `npm run typecheck` sin errores
-- [ ] Bot responde como antes en Telegram
-- [ ] Tools MCP y manifest siguen funcionando
+- **Retry con backoff** (`src/llm/openrouter.ts`): `fetchWithRetry()` reintenta en 429/5xx y errores de red (timeout, DNS, socket reset). Max 3 retries, backoff exponencial (1s, 2s, 4s) + jitter. Respeta header `retry-after` en 429s
+- **Fetch timeout**: `AbortSignal.timeout(60_000)` previene llamadas colgadas indefinidamente
+- **Token usage**: tipo `TokenUsage` en `LLMChatResult`, extracción de `usage` de la respuesta de OpenRouter
+- **Logging de tokens** (`src/agent/agent.ts`): log por iteración y totales acumulados en `response complete`
 
 ---
 
 ### Fase 3: Tool Factory Pattern
 
 **Estado**: [ ] Pendiente
-**Dependencias**: Fase 2 (tool format)
+**Dependencias**: Ninguna
 
 Convertir tools de singletons estaticos a factory functions. Elimina el hack de `setMemoryManager()`.
 
@@ -292,15 +274,16 @@ Solo considerar si:
 | Fase | Dependencias | Tamanio |
 |------|-------------|---------|
 | 1 | pino, pino-roll, pino-pretty | ~200KB (completada) |
+| 2 | ninguna | — (completada) |
 | 4 | @secretlint/node, preset-recommend | ~2MB |
 | 7 | zod | ~300KB |
 
 ## Grafo de Dependencias
 
 ```
-Fase 1 (Logging) ────── independiente
-Fase 2 (Tool Format) ── independiente
-Fase 3 (Factory) ────── depende de Fase 2
+Fase 1 (Logging) ────── completada (v1.2)
+Fase 2 (LLM Resilience)  completada (v1.3)
+Fase 3 (Factory) ────── independiente
 Fase 4 (Memory) ─────── independiente
 Fase 5 (Soul) ──────── independiente
 Fase 6 (Auto-Discovery) depende de Fase 3
