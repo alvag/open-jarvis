@@ -27,7 +27,7 @@ function getUserNickname(): string {
 function isPrRelevantToUser(pr: BitbucketPR): boolean {
   const nickname = getUserNickname();
   const isAuthor = pr.author.nickname === nickname;
-  const isReviewer = pr.reviewers.some((r) => r.nickname === nickname);
+  const isReviewer = pr.reviewers?.some((r) => r.nickname === nickname) ?? false;
   return isAuthor || isReviewer;
 }
 
