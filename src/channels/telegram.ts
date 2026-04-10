@@ -213,12 +213,13 @@ export class TelegramChannel implements Channel {
 
       // Send text response
       if (response.text) {
-        if (response.text.length <= 4096) {
-          await ctx.reply(response.text, { parse_mode: "Markdown" }).catch(() =>
-            ctx.reply(response.text),
+        const sanitized = sanitizeTelegramMarkdown(response.text);
+        if (sanitized.length <= 4096) {
+          await ctx.reply(sanitized, { parse_mode: "Markdown" }).catch(() =>
+            ctx.reply(sanitized),
           );
         } else {
-          const chunks = splitMessage(response.text, 4096);
+          const chunks = splitMessage(sanitized, 4096);
           for (const chunk of chunks) {
             await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
               ctx.reply(chunk),
@@ -261,6 +262,33 @@ export class TelegramChannel implements Channel {
   async stop(): Promise<void> {
     this.bot.stop();
   }
+}
+
+/**
+ * Strip Markdown syntax that Telegram doesn't support, preserving code blocks
+ * and inline code verbatim. Splits text into code/non-code segments and only
+ * applies transformations to non-code segments.
+ */
+function sanitizeTelegramMarkdown(text: string): string {
+  // Split into segments: fenced code blocks, inline code, and prose
+  const segments = text.split(/(```[\s\S]*?```|`[^`\n]+`)/g);
+
+  return segments
+    .map((segment, i) => {
+      // Odd indices are code captures — leave untouched
+      if (i % 2 === 1) return segment;
+
+      return segment
+        // Headings (### Title) → *Title* (bold)
+        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
+        // Blockquotes (> text) → text
+        .replace(/^>\s?/gm, "")
+        // Horizontal rules (---, ***, ___) → empty line
+        .replace(/^[-*_]{3,}\s*$/gm, "")
+        // Bold **text** → *text* (Telegram uses single asterisk)
+        .replace(/\*\*(.+?)\*\*/g, "*$1*");
+    })
+    .join("");
 }
 
 function splitMessage(text: string, maxLength: number): string[] {
