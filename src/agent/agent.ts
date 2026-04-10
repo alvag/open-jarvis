@@ -64,13 +64,22 @@ export async function runAgent(
   );
 
   // Agent loop
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+
   for (let i = 0; i < maxIterations; i++) {
     // Use complexity for first call, then "complex" for tool follow-ups
     const tier = i === 0 ? complexity : "complex";
-    const { message: response, model } = await llm.chat(messages, toolDefs, tier);
+    const { message: response, model, usage } = await llm.chat(messages, toolDefs, tier);
 
     if (i === 0) {
       log.info({ userId: context.userId, userName: context.userName, complexity, model }, `${complexity} → ${model}`);
+    }
+
+    if (usage) {
+      totalPromptTokens += usage.prompt_tokens;
+      totalCompletionTokens += usage.completion_tokens;
+      log.info({ promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens, model, iteration: i + 1 }, `tokens: ${usage.prompt_tokens} in + ${usage.completion_tokens} out = ${usage.total_tokens}`);
     }
 
     messages.push(response);
@@ -78,7 +87,7 @@ export async function runAgent(
 
     // No tool calls — we have the final answer
     if (!response.tool_calls || response.tool_calls.length === 0) {
-      log.info({ userId: context.userId, durationMs: Date.now() - startTime, toolsUsed, iterations: i + 1 }, "response complete");
+      log.info({ userId: context.userId, durationMs: Date.now() - startTime, toolsUsed, iterations: i + 1, totalPromptTokens, totalCompletionTokens, totalTokens: totalPromptTokens + totalCompletionTokens }, "response complete");
       return {
         text: response.content || "I have nothing to say.",
         toolsUsed,
