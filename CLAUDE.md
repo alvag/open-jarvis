@@ -83,4 +83,4 @@ Edit `soul.md` to change Jarvis's personality, tone, and rules.
 
 Rules added via `/learn:from` after mistakes:
 
-- Al completar una fase del PLAN.md, siempre: (1) marcar la fase como completada en PLAN.md, (2) hacer bump de versión en package.json, y (3) actualizar CHANGELOG.md con los cambios de esa fase — todo antes del commit final o merge.
+- Al completar una fase del PLAN.md o un cambio significativo, siempre: (1) marcar la fase como completada en PLAN.md si existe, (2) hacer bump de versión en package.json, y (3) actualizar CHANGELOG.md con los cambios realizados — todo antes del commit final o merge.

@@ -147,16 +147,29 @@ export class TelegramChannel implements Channel {
     // bot.start() returns a Promise that rejects on polling errors (e.g. 409
     // Conflict when a previous instance's long-poll is still active). Catch
     // and retry instead of crashing — the conflict resolves once the old
-    // poll times out (~30s).
+    // poll times out (~30s). Cap retries to avoid infinite loops when two
+    // instances fight for the same bot token. 20 retries × 3s = ~60s,
+    // enough to survive normal restarts (~30s) with margin. On exhaustion,
+    // exit with code 1 so the supervisor treats it as a crash and retries
+    // with backoff — the conflict may resolve once the other instance stops.
+    const MAX_POLL_RETRIES = 20;
+    let pollRetries = 0;
+
     const startPolling = () => {
       this.bot.start({
         onStart: () => {
           log.info("Polling started successfully");
+          pollRetries = 0;
         },
       }).catch((err: unknown) => {
         const msg = (err as Error).message ?? String(err);
         if (msg.includes("409")) {
-          log.warn("Polling conflict (409), retrying in 3s...");
+          pollRetries++;
+          if (pollRetries >= MAX_POLL_RETRIES) {
+            log.error(`Polling conflict persists after ${MAX_POLL_RETRIES} retries — another instance likely running. Shutting down.`);
+            process.exit(1);
+          }
+          log.warn(`Polling conflict (409), retry ${pollRetries}/${MAX_POLL_RETRIES} in 3s...`);
           setTimeout(startPolling, 3000);
         } else {
           log.error({ error: msg }, "Polling failed");
