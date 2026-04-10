@@ -1,5 +1,6 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
-import { appendFileSync, mkdirSync } from "node:fs";
+import pino from "pino";
+import { mkdirSync } from "node:fs";
 import { EXIT_CLEAN, EXIT_RESTART, EXIT_UPDATE } from "./exit-codes.js";
 
 // --- Constants ---
@@ -9,31 +10,39 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const GIT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const SUPERVISOR_LOG = "./data/supervisor.log";
+const isDev = process.env.NODE_ENV !== "production";
 
 // Ensure data directory exists at module load
 mkdirSync("./data", { recursive: true });
 
-// --- Lifecycle logging (SUP-04) ---
+// --- Structured logging (SUP-04) ---
 
-type SupLogLevel = "info" | "warn" | "error";
+const targets: pino.TransportTargetOptions[] = [
+  {
+    target: "pino-roll",
+    options: {
+      file: SUPERVISOR_LOG,
+      frequency: "daily",
+      mkdir: true,
+      limit: { count: 7 },
+    },
+  },
+];
 
-function supLog(
-  level: SupLogLevel,
-  category: string,
-  message: string,
-  data?: Record<string, unknown>,
-): void {
-  const timestamp = new Date().toISOString();
-  const dataStr = data ? ` | ${JSON.stringify(data)}` : "";
-  const line = `[${timestamp}] [${level.toUpperCase()}] [${category}] ${message}${dataStr}\n`;
-  try {
-    appendFileSync(SUPERVISOR_LOG, line);
-  } catch {
-    // Silently fail if we can't write to log file
-  }
-  const consoleFn = level === "error" ? console.error : console.log;
-  consoleFn(line.trimEnd());
+if (isDev) {
+  targets.push({
+    target: "pino-pretty",
+    options: { destination: 1, colorize: true, translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname" },
+  });
+} else {
+  targets.push({ target: "pino/file", options: { destination: 1 } });
 }
+
+const rootLog = pino({ level: "info" }, pino.transport({ targets }));
+const supLog = rootLog.child({ component: "supervisor" });
+const watchdogLog = rootLog.child({ component: "watchdog" });
+const autoupdateLog = rootLog.child({ component: "autoupdate" });
+const telegramLog = rootLog.child({ component: "telegram" });
 
 // --- Telegram notifications (for SUP-02 and SUP-03) ---
 
@@ -53,9 +62,7 @@ async function notifyTelegram(text: string): Promise<void> {
         body: JSON.stringify({ chat_id: userId, text }),
       });
     } catch (err) {
-      supLog("warn", "telegram", "Failed to send Telegram notification", {
-        error: (err as Error).message,
-      });
+      telegramLog.warn({ error: (err as Error).message }, "Failed to send Telegram notification");
     }
   }
 }
@@ -75,11 +82,7 @@ let gitPollInterval: ReturnType<typeof setInterval> | null = null;
 function resetHeartbeatWatchdog(child: ChildProcess): void {
   if (heartbeatDeadline) clearTimeout(heartbeatDeadline);
   heartbeatDeadline = setTimeout(() => {
-    supLog(
-      "warn",
-      "watchdog",
-      "Heartbeat timeout — bot appears hung. Killing and restarting.",
-    );
+    watchdogLog.warn("Heartbeat timeout — bot appears hung. Killing and restarting.");
     void notifyTelegram("Jarvis parece colgado. Reiniciando...");
     child.kill("SIGKILL");
   }, HEARTBEAT_TIMEOUT_MS);
@@ -105,11 +108,7 @@ function pollForUpdates(child: ChildProcess): void {
 
     if (localHead !== remoteHead) {
       updateInProgress = true;
-      supLog(
-        "info",
-        "autoupdate",
-        `New commit detected: ${remoteHead.slice(0, 8)}. Applying update.`,
-      );
+      autoupdateLog.info(`New commit detected: ${remoteHead.slice(0, 8)}. Applying update.`);
 
       const changedFiles = execSync(
         `git diff --name-only ${localHead} ${remoteHead}`,
@@ -127,9 +126,7 @@ function pollForUpdates(child: ChildProcess): void {
       child.kill("SIGTERM");
     }
   } catch (err) {
-    supLog("warn", "autoupdate", "git fetch failed", {
-      error: (err as Error).message,
-    });
+    autoupdateLog.warn({ error: (err as Error).message }, "git fetch failed");
   }
 }
 
@@ -137,7 +134,7 @@ function pollForUpdates(child: ChildProcess): void {
 
 function startBot(): void {
   lastStartTime = Date.now();
-  supLog("info", "supervisor", "Starting bot process...");
+  supLog.info("Starting bot process...");
 
   const child = spawn("node", ["--import", "tsx", "src/index.ts"], {
     stdio: ["inherit", "inherit", "inherit", "ipc"],
@@ -188,32 +185,22 @@ function startBot(): void {
     // Handle pending auto-update (SUP-03)
     if (pendingAutoUpdate) {
       pendingAutoUpdate = false;
-      supLog("info", "autoupdate", "Applying git pull...");
+      autoupdateLog.info("Applying git pull...");
       try {
         execSync("git pull", { stdio: "inherit" });
         if (needsNpmInstall) {
-          supLog(
-            "info",
-            "autoupdate",
-            "package.json changed — running npm install",
-          );
+          autoupdateLog.info("package.json changed — running npm install");
           execSync("npm install", { stdio: "inherit" });
         }
         const newHead = execSync("git rev-parse HEAD", {
           encoding: "utf8",
         }).trim();
-        supLog(
-          "info",
-          "autoupdate",
-          `Update complete. New commit: ${newHead.slice(0, 8)}`,
-        );
+        autoupdateLog.info(`Update complete. New commit: ${newHead.slice(0, 8)}`);
         void notifyTelegram(
           `Actualización aplicada. Reiniciando con commit ${newHead.slice(0, 8)}...`,
         );
       } catch (err) {
-        supLog("warn", "autoupdate", "git pull failed during auto-update", {
-          error: (err as Error).message,
-        });
+        autoupdateLog.warn({ error: (err as Error).message }, "git pull failed during auto-update");
       }
       needsNpmInstall = false;
       updateInProgress = false;
@@ -224,18 +211,18 @@ function startBot(): void {
 
     switch (code) {
       case EXIT_CLEAN:
-        supLog("info", "supervisor", "Bot exited cleanly. Shutting down.");
+        supLog.info("Bot exited cleanly. Shutting down.");
         process.exit(0);
         break;
 
       case EXIT_RESTART:
-        supLog("info", "supervisor", "Restart requested. Restarting immediately...");
+        supLog.info("Restart requested. Restarting immediately...");
         backoff = 1000;
         startBot();
         break;
 
       case EXIT_UPDATE:
-        supLog("info", "supervisor", "Update requested. Pulling latest code...");
+        supLog.info("Update requested. Pulling latest code...");
         try {
           // Check what changed before pulling
           const localHead = execSync("git rev-parse HEAD", {
@@ -251,21 +238,12 @@ function startBot(): void {
               { encoding: "utf8" },
             );
             if (changedFiles.split("\n").includes("package.json")) {
-              supLog(
-                "info",
-                "supervisor",
-                "package.json changed — running npm install",
-              );
+              supLog.info("package.json changed — running npm install");
               execSync("npm install", { stdio: "inherit" });
             }
           }
         } catch (err) {
-          supLog(
-            "warn",
-            "supervisor",
-            "git pull failed, restarting with existing code",
-            { error: (err as Error).message },
-          );
+          supLog.warn({ error: (err as Error).message }, "git pull failed, restarting with existing code");
         }
         backoff = 1000;
         startBot();
@@ -276,10 +254,7 @@ function startBot(): void {
         if (uptime > STABLE_THRESHOLD) {
           backoff = 1000;
         }
-        supLog("warn", "supervisor", `Bot crashed (exit code ${code}). Restarting in ${backoff / 1000}s...`, {
-          code,
-          uptimeMs: uptime,
-        });
+        supLog.warn({ code, uptimeMs: uptime }, `Bot crashed (exit code ${code}). Restarting in ${backoff / 1000}s...`);
         void notifyTelegram(`Jarvis se cayó (código ${code}). Reiniciando en ${backoff / 1000}s...`);
         setTimeout(() => {
           startBot();
@@ -291,5 +266,5 @@ function startBot(): void {
 }
 
 // Entry point
-supLog("info", "supervisor", "Supervisor started");
+supLog.info("Supervisor started");
 startBot();

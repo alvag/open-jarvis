@@ -5,4 +5,5 @@ data/
 *.db
 
 .DS_Store
+.pid
 mcp_config.json

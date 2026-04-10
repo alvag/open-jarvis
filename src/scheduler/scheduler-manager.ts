@@ -1,7 +1,9 @@
 import { Cron } from "croner";
 import { randomUUID } from "node:crypto";
 import type { ScheduledTaskRow, SchedulerDeps } from "./types.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("scheduler");
 
 // Module-level state
 const activeJobs = new Map<string, Cron>();
@@ -66,7 +68,7 @@ export function startScheduler(schedulerDeps: SchedulerDeps): void {
     registerJob(row);
   }
 
-  log("info", "scheduler", "Scheduler started", { tasksLoaded: rows.length });
+  log.info({ tasksLoaded: rows.length }, "Scheduler started");
 }
 
 function registerJob(task: ScheduledTaskRow): void {
@@ -168,11 +170,7 @@ async function handleTaskError(
   const errorMsg =
     err instanceof Error ? err.message : String(err);
 
-  log("error", "scheduler", "Task execution failed", {
-    taskId: task.id,
-    taskName: task.name,
-    error: errorMsg,
-  });
+  log.error({ taskId: task.id, taskName: task.name, error: errorMsg }, "Task execution failed");
 
   // Check if this is a retry attempt (retry_after was previously set)
   if (task.retry_after !== null) {
@@ -227,11 +225,7 @@ export function createTask(params: {
   const row = stmts.selectById.get(id) as ScheduledTaskRow;
   registerJob(row);
 
-  log("info", "scheduler", "Task created", {
-    taskId: id,
-    taskName: params.name,
-    type: params.type,
-  });
+  log.info({ taskId: id, taskName: params.name, type: params.type }, "Task created");
 
   return row;
 }
@@ -291,5 +285,5 @@ export function stopAll(): void {
     job.stop();
   }
   activeJobs.clear();
-  log("info", "scheduler", "All scheduler jobs stopped");
+  log.info("All scheduler jobs stopped");
 }

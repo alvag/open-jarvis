@@ -2,7 +2,9 @@ import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("telegram");
 import { EXIT_RESTART, EXIT_UPDATE } from "../exit-codes.js";
 import { getPendingRestart, scheduleRestart } from "../restart-signal.js";
 import type { ApprovalGate } from "../security/approval-gate.js";
@@ -85,9 +87,7 @@ export class TelegramChannel implements Channel {
         const attachment: Attachment = { filePath, fileName };
         await this.handleIncoming(ctx, caption, [attachment], handler);
       } catch (err) {
-        log("error", "telegram", "error downloading photo", {
-          error: (err as Error).message,
-        });
+        log.error({ error: (err as Error).message }, "error downloading photo");
         await ctx.reply("No pude descargar la imagen. Intentá de nuevo.");
       }
     });
@@ -117,9 +117,7 @@ export class TelegramChannel implements Channel {
         const attachment: Attachment = { filePath, fileName };
         await this.handleIncoming(ctx, caption, [attachment], handler);
       } catch (err) {
-        log("error", "telegram", "error downloading document", {
-          error: (err as Error).message,
-        });
+        log.error({ error: (err as Error).message }, "error downloading document");
         await ctx.reply("No pude descargar el archivo. Intentá de nuevo.");
       }
     });
@@ -153,15 +151,15 @@ export class TelegramChannel implements Channel {
     const startPolling = () => {
       this.bot.start({
         onStart: () => {
-          log("info", "telegram", "Polling started successfully");
+          log.info("Polling started successfully");
         },
       }).catch((err: unknown) => {
         const msg = (err as Error).message ?? String(err);
         if (msg.includes("409")) {
-          log("warn", "telegram", "Polling conflict (409), retrying in 3s...");
+          log.warn("Polling conflict (409), retrying in 3s...");
           setTimeout(startPolling, 3000);
         } else {
-          log("error", "telegram", "Polling failed", { error: msg });
+          log.error({ error: msg }, "Polling failed");
           setTimeout(startPolling, 5000);
         }
       });
@@ -178,7 +176,7 @@ export class TelegramChannel implements Channel {
     const userId = ctx.from!.id;
 
     if (!this.allowedUserIds.has(userId)) {
-      log("warn", "telegram", "access denied", { userId });
+      log.warn({ userId }, "access denied");
       await ctx.reply("Access denied.");
       return;
     }
@@ -223,10 +221,7 @@ export class TelegramChannel implements Channel {
         }
       }
     } catch (err) {
-      log("error", "telegram", "error handling message", {
-        error: (err as Error).message,
-        userId: String(userId),
-      });
+      log.error({ error: (err as Error).message, userId: String(userId) }, "error handling message");
       await ctx.reply("Something went wrong. Please try again.");
     } finally {
       clearInterval(typingInterval);
@@ -235,7 +230,7 @@ export class TelegramChannel implements Channel {
     // Check if a restart was scheduled by a tool during this request
     const pendingExit = getPendingRestart();
     if (pendingExit !== null) {
-      log("info", "telegram", `Pending restart detected (exit code ${pendingExit}), exiting...`);
+      log.info(`Pending restart detected (exit code ${pendingExit}), exiting...`);
       setTimeout(() => process.exit(pendingExit), 500);
     }
   }
@@ -245,9 +240,7 @@ export class TelegramChannel implements Channel {
       try {
         await this.bot.api.sendMessage(userId, text);
       } catch (err) {
-        log("warn", "telegram", `Failed to send broadcast to ${userId}`, {
-          error: (err as Error).message,
-        });
+        log.warn({ error: (err as Error).message }, `Failed to send broadcast to ${userId}`);
       }
     }
   }

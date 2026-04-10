@@ -14,7 +14,9 @@
 
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { log } from "../logger.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("approval-gate");
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,12 +129,7 @@ export function createApprovalGate(db: Database.Database): ApprovalGate {
         expiresAt,
       );
 
-      log("info", "approval-gate", "Approval request created", {
-        id,
-        command: params.command,
-        userId: params.userId,
-        expiresAt,
-      });
+      log.info({ id, command: params.command, userId: params.userId, expiresAt }, "Approval request created");
 
       // Build and send the approval message
       const commandDisplay = [params.command, ...params.args].join(" ");
@@ -156,11 +153,7 @@ export function createApprovalGate(db: Database.Database): ApprovalGate {
           if (resolvers.has(id)) {
             resolvers.delete(id);
             updateStatus.run("expired", id);
-            log("info", "approval-gate", "Approval request expired", {
-              id,
-              command: params.command,
-              userId: params.userId,
-            });
+            log.info({ id, command: params.command, userId: params.userId }, "Approval request expired");
             resolve(false);
           }
         }, 5 * 60 * 1000);
@@ -179,18 +172,12 @@ export function createApprovalGate(db: Database.Database): ApprovalGate {
         // Normal flow — Promise is still waiting
         resolvers.delete(id);
         updateStatus.run(approved ? "approved" : "denied", id);
-        log("info", "approval-gate", "Approval callback handled", {
-          id,
-          approved,
-        });
+        log.info({ id, approved }, "Approval callback handled");
         resolver(approved);
       } else {
         // Post-restart flow — no in-memory Promise exists; just update SQLite
         updateStatus.run(approved ? "approved" : "denied", id);
-        log("warn", "approval-gate", "Callback received but no resolver found (post-restart?)", {
-          id,
-          approved,
-        });
+        log.warn({ id, approved }, "Callback received but no resolver found (post-restart?)");
       }
     },
 
@@ -203,9 +190,7 @@ export function createApprovalGate(db: Database.Database): ApprovalGate {
         return;
       }
 
-      log("info", "approval-gate", "Recovering stale pending approvals on startup", {
-        count: staleRows.length,
-      });
+      log.info({ count: staleRows.length }, "Recovering stale pending approvals on startup");
 
       for (const row of staleRows) {
         // Mark old approval as expired synchronously
@@ -228,17 +213,11 @@ export function createApprovalGate(db: Database.Database): ApprovalGate {
 
         // Fire-and-forget notify — errors are non-fatal during startup
         notify(row.user_id, message).catch((err: unknown) => {
-          log("warn", "approval-gate", "Failed to notify user of expired approval", {
-            userId: row.user_id,
-            id: row.id,
-            error: (err as Error).message,
-          });
+          log.warn({ userId: row.user_id, id: row.id, error: (err as Error).message }, "Failed to notify user of expired approval");
         });
       }
 
-      log("info", "approval-gate", "Finished recovering stale approvals", {
-        count: staleRows.length,
-      });
+      log.info({ count: staleRows.length }, "Finished recovering stale approvals");
     },
   };
 }

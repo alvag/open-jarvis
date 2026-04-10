@@ -5,7 +5,9 @@ import { isAbsolute } from "node:path";
 import type { Tool, ToolResult } from "../tool-types.js";
 import { classifyCommand, getBlockReason } from "../../security/command-classifier.js";
 import type { ApprovalGate } from "../../security/approval-gate.js";
-import { log } from "../../logger.js";
+import { createLogger } from "../../logger.js";
+
+const log = createLogger("execute_command");
 
 const execFileAsync = promisify(execFile);
 
@@ -99,11 +101,7 @@ const executeCommandTool: Tool = {
 
     // Classify command
     const classification = classifyCommand(command, argList);
-    log("info", "execute_command", "Command classified", {
-      command,
-      args: argList,
-      classification,
-    });
+    log.info({ command, args: argList, classification }, "Command classified");
 
     // Handle blocked commands
     if (classification === "blocked") {
@@ -165,10 +163,7 @@ const executeCommandTool: Tool = {
             await sendResultFn(userId, result);
           }
         } catch (err) {
-          log("error", "execute_command", "Background execution failed", {
-            command: commandDisplay,
-            error: (err as Error).message,
-          });
+          log.error({ command: commandDisplay, error: (err as Error).message }, "Background execution failed");
           if (sendResultFn) {
             await sendResultFn(userId, `Error executing \`${commandDisplay}\`: ${(err as Error).message}`);
           }
