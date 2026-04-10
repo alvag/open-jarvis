@@ -78,3 +78,9 @@ Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, `OPENROUTER_API_KEY
 
 ## Personality
 Edit `soul.md` to change Jarvis's personality, tone, and rules.
+
+## Learned Rules
+
+Rules added via `/learn:from` after mistakes:
+
+- Al completar una fase del PLAN.md, siempre: (1) marcar la fase como completada en PLAN.md, (2) hacer bump de versión en package.json, y (3) actualizar CHANGELOG.md con los cambios de esa fase — todo antes del commit final o merge.

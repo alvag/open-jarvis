@@ -101,25 +101,14 @@ Mantener el agent loop custom. Es simple, funciona, y da control total. Foco en 
 
 ## Fases Pendientes
 
-### Fase 1: Logging Estructurado
+### Fase 1: Logging Estructurado (v1.2)
 
-**Estado**: [ ] Pendiente
-**Dependencias**: Ninguna
-**Deps nuevas**: `pino`, `pino-roll`, `pino-pretty` (dev)
+**Estado**: [x] Completada — v1.2 (2026-04-09)
 
-Reemplazar logger custom (`src/logger.ts` — `appendFileSync` plano) con pino structured logging.
-
-**Archivos a modificar:**
-- `src/logger.ts` — Reescribir: `createLogger(component)` factory, pino-roll para rotacion diaria, pino-pretty en dev, 7 dias retencion
-- ~12 archivos que importan `log` de `../logger.js` — Actualizar a `const log = createLogger("component")`
-
-**Referencia v2**: `open-jarvis-2/src/core/logger.ts`
-
-**Verificacion:**
-- [ ] `npm run typecheck` sin errores
-- [ ] Logs en formato JSON estructurado en produccion
-- [ ] Logs legibles con colores en dev
-- [ ] Rotacion diaria funciona
+- **Logger Factory** (`src/logger.ts`): `createLogger(component)` con pino, child loggers por componente
+- **Transports**: pino-roll (rotacion diaria, 7 dias retencion), pino-pretty (dev), JSON stdout (prod)
+- **Fatal Flush**: `fatalExit()` en `src/index.ts` usa `log.flush()` con safety timeout antes de `process.exit(1)`
+- **18 archivos migrados** de `console.log/error` a logging estructurado
 
 ---
 
@@ -302,7 +291,7 @@ Solo considerar si:
 
 | Fase | Dependencias | Tamanio |
 |------|-------------|---------|
-| 1 | pino, pino-roll, pino-pretty (dev) | ~200KB |
+| 1 | pino, pino-roll, pino-pretty | ~200KB (completada) |
 | 4 | @secretlint/node, preset-recommend | ~2MB |
 | 7 | zod | ~300KB |
 

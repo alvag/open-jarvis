@@ -4,6 +4,19 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-09
+
+### Added
+- **Structured logging con pino**: reemplazo completo de `console.log/error` por logging estructurado en 18 archivos
+- **Logger factory** (`src/logger.ts`): `createLogger(component)` genera child loggers con contexto por componente
+- **Transports**: pino-roll (rotación diaria, 7 días retención), pino-pretty (dev con colores), JSON stdout (prod)
+- **Fatal log flush** (`src/index.ts`): `fatalExit()` garantiza flush del transport asíncrono antes de `process.exit(1)` con safety timeout de 2s
+
+### Changed
+- `pino-pretty` movido de `devDependencies` a `dependencies` para evitar crash en deploys sin `NODE_ENV=production`
+- Supervisor (`src/supervisor.ts`) migrado a pino con child loggers separados por componente (supervisor, watchdog, autoupdate, telegram)
+- Dependencias agregadas: `pino@^10.3.1`, `pino-roll@^4.0.0`, `pino-pretty@^13.1.3`
+
 ## [1.1.0] - 2026-03-19
 
 ### Added
