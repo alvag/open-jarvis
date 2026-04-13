@@ -1,14 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import type { MemoryManager } from "../../memory/memory-manager.js";
 
-let memoryManagerRef: MemoryManager | null = null;
-
-export function setMemoryManager(mm: MemoryManager): void {
-  memoryManagerRef = mm;
-}
-
-const saveMemoryTool: Tool = {
-  definition: {
+export function createSaveMemoryTool(memoryManager: MemoryManager): Tool {
+  return {
+    definition: {
     name: "save_memory",
     description:
       "Save a fact or piece of information about the user for future reference. Use a short, searchable key and a detailed content string.",
@@ -36,15 +31,11 @@ const saveMemoryTool: Tool = {
   },
 
   async execute(args, context): Promise<ToolResult> {
-    if (!memoryManagerRef) {
-      return { success: false, data: null, error: "Memory manager not initialized" };
-    }
-
     const key = args.key as string;
     const content = args.content as string;
     const category = (args.category as string) || "fact";
 
-    const memory = memoryManagerRef.saveMemory(
+    const memory = memoryManager.saveMemory(
       context.userId,
       key,
       content,
@@ -52,7 +43,7 @@ const saveMemoryTool: Tool = {
     );
 
     // Find potentially related memories for consolidation hints
-    const related = memoryManagerRef
+    const related = memoryManager
       .searchMemories(context.userId, key, 5)
       .filter((m) => m.id !== memory.id);
 
@@ -74,6 +65,5 @@ const saveMemoryTool: Tool = {
 
     return { success: true, data: result };
   },
-};
-
-export default saveMemoryTool;
+  };
+}

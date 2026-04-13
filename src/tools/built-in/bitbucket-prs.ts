@@ -1,12 +1,6 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import { BitbucketClient } from "../bitbucket-api.js";
 
-let client: BitbucketClient | null = null;
-function getClient(): BitbucketClient {
-  if (!client) client = new BitbucketClient();
-  return client;
-}
-
 interface TruncateResult {
   content: string;
   truncated: boolean;
@@ -87,8 +81,15 @@ function truncateDiff(rawDiff: string, maxLines: number): TruncateResult {
   };
 }
 
-const bitbucketPrsTool: Tool = {
-  definition: {
+export function createBitbucketPrsTool(): Tool {
+  let client: BitbucketClient | null = null;
+  function getClient(): BitbucketClient {
+    if (!client) client = new BitbucketClient();
+    return client;
+  }
+
+  return {
+    definition: {
     name: "bitbucket_prs",
     description:
       "Interact with Bitbucket Cloud Pull Requests. Can list PRs, get PR details, get diffs, get comments, or perform a full code review analysis.",
@@ -327,6 +328,5 @@ const bitbucketPrsTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default bitbucketPrsTool;
+  };
+}

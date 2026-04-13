@@ -1,8 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import { runGws } from "../gws-executor.js";
 
-const gwsGmailTool: Tool = {
-  definition: {
+export function createGwsGmailTool(): Tool {
+  return {
+    definition: {
     name: "google_gmail",
     description:
       "Interact with Gmail. Can list recent messages, read a specific message, search messages, and send emails.",
@@ -106,6 +107,5 @@ const gwsGmailTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default gwsGmailTool;
+  };
+}

@@ -1,20 +1,19 @@
 import Firecrawl from "@mendable/firecrawl-js";
 import type { Tool, ToolResult } from "../tool-types.js";
-import { config } from "../../config.js";
 
 const MAX_CONTENT_CHARS = 8000; // ~2,000 tokens — prevents LLM context saturation
 
-// Lazy-init: only create client when actually called (avoids crash if API key missing)
-let firecrawl: Firecrawl | null = null;
-function getFirecrawl() {
-  if (!firecrawl) {
-    firecrawl = new Firecrawl({ apiKey: config.firecrawl.apiKey });
+export function createWebScrapeTool(apiKey: string): Tool {
+  let firecrawl: Firecrawl | null = null;
+  function getFirecrawl() {
+    if (!firecrawl) {
+      firecrawl = new Firecrawl({ apiKey });
+    }
+    return firecrawl;
   }
-  return firecrawl;
-}
 
-const webScrapeTool: Tool = {
-  definition: {
+  return {
+    definition: {
     name: "web_scrape",
     description:
       "Extract the text content of a web page as clean markdown. Handles JavaScript-rendered pages (SPAs, React, etc.). Use this when the user sends a URL or when web_search results need deeper reading.",
@@ -90,6 +89,5 @@ const webScrapeTool: Tool = {
       return { success: false, data: null, error: friendly };
     }
   },
-};
-
-export default webScrapeTool;
+  };
+}

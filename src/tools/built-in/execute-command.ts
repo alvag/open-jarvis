@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import type { Tool, ToolResult } from "../tool-types.js";
 import { classifyCommand, getBlockReason } from "../../security/command-classifier.js";
-import type { ApprovalGate } from "../../security/approval-gate.js";
+import type { ApprovalDeps } from "./approval-deps.js";
 import { createLogger } from "../../logger.js";
 
 const log = createLogger("execute_command");
@@ -13,30 +13,9 @@ const execFileAsync = promisify(execFile);
 
 const OUTPUT_LIMIT = 4096;
 
-let approvalGateRef: ApprovalGate | null = null;
-
-export function setApprovalGate(gate: ApprovalGate): void {
-  approvalGateRef = gate;
-}
-
-let sendApprovalFn: ((userId: string, text: string, approvalId: string) => Promise<void>) | null = null;
-
-export function setSendApproval(
-  fn: (userId: string, text: string, approvalId: string) => Promise<void>,
-): void {
-  sendApprovalFn = fn;
-}
-
-let sendResultFn: ((userId: string, text: string) => Promise<void>) | null = null;
-
-export function setSendResult(
-  fn: (userId: string, text: string) => Promise<void>,
-): void {
-  sendResultFn = fn;
-}
-
-const executeCommandTool: Tool = {
-  definition: {
+export function createExecuteCommandTool(deps: ApprovalDeps): Tool {
+  return {
+    definition: {
     name: "execute_command",
     description:
       "Execute a shell command or local script on the user's Mac. Commands are classified as safe (runs immediately), risky (requires user approval), or blocked (never runs). Pipes, &&, and ; are NOT supported — use multiple tool calls for chaining. Scripts (.sh, .py, .ts) are always risky and require approval. Default working directory is the user's home directory.",
@@ -119,14 +98,6 @@ const executeCommandTool: Tool = {
     // the approval message, fire the execution in the background, and return
     // immediately. The result is sent directly to the user via Telegram.
     if (classification === "risky") {
-      if (!approvalGateRef) {
-        return {
-          success: false,
-          data: null,
-          error: "Approval gate not initialized. Cannot execute risky commands.",
-        };
-      }
-
       const reason = isScript
         ? "Script execution always requires approval"
         : "Command classified as risky (modifies system state)";
@@ -137,36 +108,28 @@ const executeCommandTool: Tool = {
       // Fire-and-forget: approval + execution happen in the background
       void (async () => {
         try {
-          const approved = await approvalGateRef!.request({
+          const approved = await deps.approvalGate.request({
             command,
             args: argList,
             cwd,
             reason,
             userId,
             sendApproval: async (text, approvalId) => {
-              if (sendApprovalFn) {
-                await sendApprovalFn(userId, text, approvalId);
-              }
+              await deps.sendApproval(userId, text, approvalId);
             },
           });
 
           if (!approved) {
-            if (sendResultFn) {
-              await sendResultFn(userId, `Command denied or expired: \`${commandDisplay}\``);
-            }
+            await deps.sendResult(userId, `Command denied or expired: \`${commandDisplay}\``);
             return;
           }
 
           // Approved — execute the command
           const result = await runCommand(command, argList, cwd);
-          if (sendResultFn) {
-            await sendResultFn(userId, result);
-          }
+          await deps.sendResult(userId, result);
         } catch (err) {
           log.error({ command: commandDisplay, error: (err as Error).message }, "Background execution failed");
-          if (sendResultFn) {
-            await sendResultFn(userId, `Error executing \`${commandDisplay}\`: ${(err as Error).message}`);
-          }
+          await deps.sendResult(userId, `Error executing \`${commandDisplay}\`: ${(err as Error).message}`);
         }
       })();
 
@@ -182,7 +145,8 @@ const executeCommandTool: Tool = {
     // Safe commands — execute directly
     return executeAndFormat(command, argList, cwd);
   },
-};
+  };
+}
 
 /**
  * Resolve interpreter and execute a command, returning a formatted ToolResult.
@@ -270,4 +234,3 @@ async function runCommand(command: string, argList: string[], cwd: string): Prom
   }
 }
 
-export default executeCommandTool;

@@ -1,18 +1,17 @@
 import { tavily } from "@tavily/core";
 import type { Tool, ToolResult } from "../tool-types.js";
-import { config } from "../../config.js";
 
-// Lazy-init: only create client when actually called (avoids crash if API key missing)
-let client: ReturnType<typeof tavily> | null = null;
-function getClient() {
-  if (!client) {
-    client = tavily({ apiKey: config.tavily.apiKey });
+export function createWebSearchTool(apiKey: string): Tool {
+  let client: ReturnType<typeof tavily> | null = null;
+  function getClient() {
+    if (!client) {
+      client = tavily({ apiKey });
+    }
+    return client;
   }
-  return client;
-}
 
-const webSearchTool: Tool = {
-  definition: {
+  return {
+    definition: {
     name: "web_search",
     description:
       "Search the web for current information. Returns a synthesized summary with source links. Use 'advanced' depth for research questions requiring multiple sources.",
@@ -58,6 +57,5 @@ const webSearchTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default webSearchTool;
+  };
+}

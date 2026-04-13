@@ -1,9 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import { runGws } from "../gws-executor.js";
-import { config } from "../../config.js";
 
-const gwsDriveTool: Tool = {
-  definition: {
+export function createGwsDriveTool(driveFolderIds: string[]): Tool {
+  return {
+    definition: {
     name: "google_drive",
     description:
       "Interact with Google Drive. Can list files, read file metadata, search for files, and upload files.",
@@ -48,7 +48,7 @@ const gwsDriveTool: Tool = {
   async execute(args): Promise<ToolResult> {
     const action = args.action as string;
     const pageSize = (args.max_results as string) || "10";
-    const folderIds = config.google.driveFolderIds;
+    const folderIds = driveFolderIds;
 
     try {
       switch (action) {
@@ -126,6 +126,5 @@ const gwsDriveTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default gwsDriveTool;
+  };
+}

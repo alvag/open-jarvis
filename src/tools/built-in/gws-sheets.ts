@@ -1,8 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import { runGws } from "../gws-executor.js";
 
-const gwsSheetsTool: Tool = {
-  definition: {
+export function createGwsSheetsTool(): Tool {
+  return {
+    definition: {
     name: "google_sheets",
     description:
       "Interact with Google Sheets. Can read cell values, write/update cells, append rows, and create new spreadsheets.",
@@ -133,6 +134,5 @@ const gwsSheetsTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default gwsSheetsTool;
+  };
+}

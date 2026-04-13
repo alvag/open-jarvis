@@ -127,7 +127,7 @@ Fase redefinida: la migración de formato de tools resultó innecesaria (el wrap
 
 ### Fase 3: Tool Factory Pattern
 
-**Estado**: [ ] Pendiente
+**Estado**: [x] Completada — v1.4 (2026-04-13)
 **Dependencias**: Ninguna
 
 Convertir tools de singletons estaticos a factory functions. Elimina el hack de `setMemoryManager()`.

@@ -11,28 +11,21 @@ import { createLogger } from "./logger.js";
 const log = createLogger("main");
 
 // Built-in tools
-import getCurrentTime from "./tools/built-in/get-current-time.js";
-import saveMemoryTool, {
-  setMemoryManager as setSaveMemoryManager,
-} from "./tools/built-in/save-memory.js";
-import searchMemoriesTool, {
-  setMemoryManager as setSearchMemoryManager,
-} from "./tools/built-in/search-memories.js";
-import proposeTool from "./tools/built-in/propose-tool.js";
-import gwsDriveTool from "./tools/built-in/gws-drive.js";
-import gwsGmailTool from "./tools/built-in/gws-gmail.js";
-import gwsCalendarTool from "./tools/built-in/gws-calendar.js";
-import gwsSheetsTool from "./tools/built-in/gws-sheets.js";
-import tableImageTool from "./tools/built-in/table-image.js";
-import bitbucketPrsTool from "./tools/built-in/bitbucket-prs.js";
-import restartServerTool from "./tools/built-in/restart-server.js";
-import webSearchTool from "./tools/built-in/web-search.js";
-import webScrapeTool from "./tools/built-in/web-scrape.js";
-import executeCommandTool, {
-  setApprovalGate,
-  setSendApproval,
-  setSendResult,
-} from "./tools/built-in/execute-command.js";
+import { createGetCurrentTimeTool } from "./tools/built-in/get-current-time.js";
+import { createSaveMemoryTool } from "./tools/built-in/save-memory.js";
+import { createSearchMemoriesTool } from "./tools/built-in/search-memories.js";
+import { createProposeToolTool } from "./tools/built-in/propose-tool.js";
+import { createGwsDriveTool } from "./tools/built-in/gws-drive.js";
+import { createGwsGmailTool } from "./tools/built-in/gws-gmail.js";
+import { createGwsCalendarTool } from "./tools/built-in/gws-calendar.js";
+import { createGwsSheetsTool } from "./tools/built-in/gws-sheets.js";
+import { createTableImageTool } from "./tools/built-in/table-image.js";
+import { createBitbucketPrsTool } from "./tools/built-in/bitbucket-prs.js";
+import { createRestartServerTool } from "./tools/built-in/restart-server.js";
+import { createWebSearchTool } from "./tools/built-in/web-search.js";
+import { createWebScrapeTool } from "./tools/built-in/web-scrape.js";
+import { createExecuteCommandTool } from "./tools/built-in/execute-command.js";
+import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
 import {
   createScheduledTaskTool,
@@ -48,7 +41,7 @@ import {
 } from "./scheduler/scheduler-manager.js";
 import type { SchedulerDeps } from "./scheduler/types.js";
 import { getPendingRestart } from "./restart-signal.js";
-import { loadToolManifest, setManifestApprovalGate, setManifestSendApproval, setManifestSendResult } from "./tools/manifest-loader.js";
+import { loadToolManifest } from "./tools/manifest-loader.js";
 import { loadMcpConfig } from "./tools/mcp-config-loader.js";
 import { McpManager } from "./mcp/mcp-manager.js";
 
@@ -70,55 +63,68 @@ async function main() {
   // 2. Load personality
   const soulContent = loadSoul(config.paths.soul);
 
-  // 3. Register tools
-  const toolRegistry = new ToolRegistry();
-  toolRegistry.register(getCurrentTime);
+  // 3. Initialize Telegram channel + approval gate (needed before tool registration)
+  const telegram = new TelegramChannel(
+    config.telegram.botToken,
+    config.telegram.allowedUserIds,
+  );
 
-  // Wire memory manager into memory tools
-  setSaveMemoryManager(memoryManager);
-  setSearchMemoryManager(memoryManager);
-  toolRegistry.register(saveMemoryTool);
-  toolRegistry.register(searchMemoriesTool);
-  toolRegistry.register(proposeTool);
-  toolRegistry.register(tableImageTool);
-  toolRegistry.register(restartServerTool);
+  const approvalGate = createApprovalGate(db);
+  telegram.setApprovalGate(approvalGate);
+
+  const approvalDeps: ApprovalDeps = {
+    approvalGate,
+    sendApproval: (userId, text, approvalId) =>
+      telegram.sendApprovalMessage(userId, text, approvalId),
+    sendResult: (userId, text) =>
+      telegram.sendMessage(userId, text),
+  };
+
+  // 4. Register tools
+  const toolRegistry = new ToolRegistry();
+  toolRegistry.register(createGetCurrentTimeTool());
+  toolRegistry.register(createSaveMemoryTool(memoryManager));
+  toolRegistry.register(createSearchMemoriesTool(memoryManager));
+  toolRegistry.register(createProposeToolTool());
+  toolRegistry.register(createTableImageTool());
+  toolRegistry.register(createRestartServerTool());
 
   // Google Workspace tools (conditional)
   if (config.google.enabled.drive) {
-    toolRegistry.register(gwsDriveTool);
+    toolRegistry.register(createGwsDriveTool(config.google.driveFolderIds));
     log.info("Google Drive tool enabled");
   }
   if (config.google.enabled.gmail) {
-    toolRegistry.register(gwsGmailTool);
+    toolRegistry.register(createGwsGmailTool());
     log.info("Google Gmail tool enabled");
   }
   if (config.google.enabled.calendar) {
-    toolRegistry.register(gwsCalendarTool);
+    toolRegistry.register(createGwsCalendarTool());
     log.info("Google Calendar tool enabled");
   }
   if (config.google.enabled.sheets) {
-    toolRegistry.register(gwsSheetsTool);
+    toolRegistry.register(createGwsSheetsTool());
     log.info("Google Sheets tool enabled");
   }
 
   // Bitbucket tools (conditional)
   if (config.bitbucket.enabled) {
-    toolRegistry.register(bitbucketPrsTool);
+    toolRegistry.register(createBitbucketPrsTool());
     log.info("Bitbucket PRs tool enabled");
   }
 
   // Web tools (conditional on API keys)
   if (config.tavily.enabled) {
-    toolRegistry.register(webSearchTool);
+    toolRegistry.register(createWebSearchTool(config.tavily.apiKey));
     log.info("Web search tool enabled (Tavily)");
   }
   if (config.firecrawl.enabled) {
-    toolRegistry.register(webScrapeTool);
+    toolRegistry.register(createWebScrapeTool(config.firecrawl.apiKey));
     log.info("Web scrape tool enabled (Firecrawl)");
   }
 
   // Shell execution tool (always registered — security handled inside the tool)
-  toolRegistry.register(executeCommandTool);
+  toolRegistry.register(createExecuteCommandTool(approvalDeps));
   log.info("Shell execution tool enabled (execute_command)");
 
   // Scheduler tools (always registered — scheduler handles enabled/disabled internally)
@@ -131,7 +137,7 @@ async function main() {
   const builtInCount = toolRegistry.getDefinitions().length;
 
   // Load manifest tools (after built-ins — built-ins have collision priority)
-  loadToolManifest(toolRegistry);
+  loadToolManifest(toolRegistry, approvalDeps);
 
   const manifestCount = toolRegistry.getDefinitions().length - builtInCount;
 
@@ -151,39 +157,13 @@ async function main() {
   // Derive hasMcpTools from actual registered tools (not config count)
   const hasMcpTools = mcpSummary.toolsRegistered > 0;
 
-  // 4. Initialize LLM with model tiers
+  // 5. Initialize LLM with model tiers
   const llm = new OpenRouterProvider(
     config.openrouter.apiKey,
     config.openrouter.models,
   );
 
   log.info({ models: config.openrouter.models }, "Model tiers loaded");
-
-  // 5. Start Telegram channel
-  const telegram = new TelegramChannel(
-    config.telegram.botToken,
-    config.telegram.allowedUserIds,
-  );
-
-  // Wire approval gate for shell command approvals
-  const approvalGate = createApprovalGate(db);
-  telegram.setApprovalGate(approvalGate);
-  setApprovalGate(approvalGate);
-  setSendApproval((userId, text, approvalId) =>
-    telegram.sendApprovalMessage(userId, text, approvalId),
-  );
-  setSendResult((userId, text) =>
-    telegram.sendMessage(userId, text),
-  );
-
-  // Wire approval gate for manifest tool approvals (same gate as execute_command)
-  setManifestApprovalGate(approvalGate);
-  setManifestSendApproval((userId, text, approvalId) =>
-    telegram.sendApprovalMessage(userId, text, approvalId),
-  );
-  setManifestSendResult((userId, text) =>
-    telegram.sendMessage(userId, text),
-  );
 
   // In-flight agent tracking for graceful shutdown (SUP-01)
   let inFlightCount = 0;

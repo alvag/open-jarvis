@@ -1,14 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import type { MemoryManager } from "../../memory/memory-manager.js";
 
-let memoryManagerRef: MemoryManager | null = null;
-
-export function setMemoryManager(mm: MemoryManager): void {
-  memoryManagerRef = mm;
-}
-
-const searchMemoriesTool: Tool = {
-  definition: {
+export function createSearchMemoriesTool(memoryManager: MemoryManager): Tool {
+  return {
+    definition: {
     name: "search_memories",
     description:
       "Search through saved memories about the user. Returns matching facts, preferences, events, and notes.",
@@ -40,10 +35,6 @@ const searchMemoriesTool: Tool = {
   },
 
   async execute(args, context): Promise<ToolResult> {
-    if (!memoryManagerRef) {
-      return { success: false, data: null, error: "Memory manager not initialized" };
-    }
-
     const action = (args.action as string) || "search";
 
     if (action === "history") {
@@ -56,7 +47,7 @@ const searchMemoriesTool: Tool = {
         };
       }
 
-      const memories = memoryManagerRef.searchMemories(
+      const memories = memoryManager.searchMemories(
         context.userId,
         key,
         1,
@@ -65,7 +56,7 @@ const searchMemoriesTool: Tool = {
         return { success: true, data: { count: 0, history: [] } };
       }
 
-      const history = memoryManagerRef.getMemoryHistory(memories[0].id, 10);
+      const history = memoryManager.getMemoryHistory(memories[0].id, 10);
       return {
         success: true,
         data: {
@@ -81,7 +72,7 @@ const searchMemoriesTool: Tool = {
     const query = args.query as string;
     const limit = parseInt((args.limit as string) || "5", 10);
 
-    const memories = memoryManagerRef.searchMemories(
+    const memories = memoryManager.searchMemories(
       context.userId,
       query,
       limit,
@@ -100,6 +91,5 @@ const searchMemoriesTool: Tool = {
       },
     };
   },
-};
-
-export default searchMemoriesTool;
+  };
+}

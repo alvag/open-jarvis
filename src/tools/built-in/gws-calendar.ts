@@ -1,8 +1,9 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import { runGws } from "../gws-executor.js";
 
-const gwsCalendarTool: Tool = {
-  definition: {
+export function createGwsCalendarTool(): Tool {
+  return {
+    definition: {
     name: "google_calendar",
     description:
       "Interact with Google Calendar. Can list upcoming events, get event details, and create new events.",
@@ -106,6 +107,5 @@ const gwsCalendarTool: Tool = {
       return { success: false, data: null, error: (err as Error).message };
     }
   },
-};
-
-export default gwsCalendarTool;
+  };
+}

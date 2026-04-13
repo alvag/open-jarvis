@@ -36,8 +36,9 @@ function parseNumeric(value: string): number {
   return parseFloat(cleaned);
 }
 
-const tableImageTool: Tool = {
-  definition: {
+export function createTableImageTool(): Tool {
+  return {
+    definition: {
     name: "table_image",
     description:
       "Generate a PNG image of a data table. Use this to create visual table summaries from spreadsheet data. Returns the file path of the generated image. Supports conditional coloring for payment tracking: green for paid (>= threshold), red for unpaid (< threshold). Do NOT include a totals/summary row — only include individual data rows. Do NOT save or upload the generated image anywhere (no Drive, no local storage) — it is sent directly to the user and discarded.",
@@ -274,6 +275,5 @@ const tableImageTool: Tool = {
       };
     }
   },
-};
-
-export default tableImageTool;
+  };
+}

@@ -4,6 +4,21 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-13
+
+### Changed
+- **Tool Factory Pattern**: migración completa de 14 built-in tools de singletons estáticos a factory functions (`createXTool(deps)`)
+- Eliminados 6 setter functions de dependency injection (`setMemoryManager` x2, `setApprovalGate`, `setSendApproval`, `setSendResult`, + 3 equivalentes en manifest-loader)
+- Eliminado todo estado mutable a nivel de módulo en `src/tools/` — dependencias capturadas via closures
+- `src/index.ts` reordenado: TelegramChannel y ApprovalGate se crean antes del registro de tools
+- `loadToolManifest()` recibe `ApprovalDeps` como parámetro en vez de usar setters globales
+- `propose-tool` actualizado para generar templates con el nuevo factory pattern
+- `gws-drive` recibe `driveFolderIds` como parámetro en vez de leer `config` directamente
+- `web-search` y `web-scrape` reciben `apiKey` como parámetro, lazy client en closure
+
+### Added
+- `src/tools/built-in/approval-deps.ts`: interface `ApprovalDeps` compartida entre `execute-command` y `manifest-loader`
+
 ## [1.3.0] - 2026-04-09
 
 ### Added

@@ -29,7 +29,7 @@ import { spawn } from "node:child_process";
 import type { Tool, ToolResult, JsonSchema } from "./tool-types.js";
 import type { ToolRegistry } from "./tool-registry.js";
 import { classifyCommand, getBlockReason } from "../security/command-classifier.js";
-import type { ApprovalGate } from "../security/approval-gate.js";
+import type { ApprovalDeps } from "./built-in/approval-deps.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger("manifest");
@@ -44,28 +44,6 @@ interface ManifestEntry {
   parameters: object; // JSON Schema — passed through to ToolDefinition
   handler_path: string; // Absolute path recommended; relative resolved against cwd
   enabled?: boolean; // Default true
-}
-
-// ---------------------------------------------------------------------------
-// Approval gate wiring (same pattern as execute-command.ts)
-// ---------------------------------------------------------------------------
-
-let approvalGateRef: ApprovalGate | null = null;
-let sendApprovalFn: ((userId: string, text: string, approvalId: string) => Promise<void>) | null = null;
-let sendResultFn: ((userId: string, text: string) => Promise<void>) | null = null;
-
-export function setManifestApprovalGate(gate: ApprovalGate): void {
-  approvalGateRef = gate;
-}
-
-export function setManifestSendApproval(
-  fn: (userId: string, text: string, approvalId: string) => Promise<void>,
-): void {
-  sendApprovalFn = fn;
-}
-
-export function setManifestSendResult(fn: (userId: string, text: string) => Promise<void>): void {
-  sendResultFn = fn;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +68,7 @@ function resolveInterpreter(handlerPath: string): { interpreter: string; interpr
 // buildManifestTool
 // ---------------------------------------------------------------------------
 
-function buildManifestTool(entry: ManifestEntry, handlerPath: string): Tool {
+function buildManifestTool(entry: ManifestEntry, handlerPath: string, deps: ApprovalDeps): Tool {
   const { interpreter, interpreterArgs } = resolveInterpreter(handlerPath);
 
   return {
@@ -110,14 +88,6 @@ function buildManifestTool(entry: ManifestEntry, handlerPath: string): Tool {
       }
 
       if (classification === "risky") {
-        if (!approvalGateRef) {
-          return {
-            success: false,
-            data: null,
-            error: "Approval gate not initialized. Cannot execute risky manifest tool.",
-          };
-        }
-
         const userId = context.userId;
         const commandDisplay = [interpreter, ...interpreterArgs].join(" ");
 
@@ -125,23 +95,19 @@ function buildManifestTool(entry: ManifestEntry, handlerPath: string): Tool {
         // (Grammy processes updates sequentially — same pattern as execute-command.ts)
         void (async () => {
           try {
-            const approved = await approvalGateRef!.request({
+            const approved = await deps.approvalGate.request({
               command: interpreter,
               args: interpreterArgs,
               cwd: process.cwd(),
               reason: "Script execution always requires approval",
               userId,
               sendApproval: async (text, approvalId) => {
-                if (sendApprovalFn) {
-                  await sendApprovalFn(userId, text, approvalId);
-                }
+                await deps.sendApproval(userId, text, approvalId);
               },
             });
 
             if (!approved) {
-              if (sendResultFn) {
-                await sendResultFn(userId, `Manifest tool denied or expired: \`${entry.name}\``);
-              }
+              await deps.sendResult(userId, `Manifest tool denied or expired: \`${entry.name}\``);
               return;
             }
 
@@ -150,14 +116,10 @@ function buildManifestTool(entry: ManifestEntry, handlerPath: string): Tool {
             const text = result.success
               ? `Manifest tool \`${entry.name}\` completed:\n\`\`\`\n${JSON.stringify(result.data, null, 2)}\n\`\`\``
               : `Manifest tool \`${entry.name}\` failed: ${result.error}`;
-            if (sendResultFn) {
-              await sendResultFn(userId, text);
-            }
+            await deps.sendResult(userId, text);
           } catch (err) {
             log.error({ tool: entry.name, error: (err as Error).message }, "Background manifest tool execution failed");
-            if (sendResultFn) {
-              await sendResultFn(userId, `Error running manifest tool \`${entry.name}\`: ${(err as Error).message}`);
-            }
+            await deps.sendResult(userId, `Error running manifest tool \`${entry.name}\`: ${(err as Error).message}`);
           }
         })();
 
@@ -239,7 +201,7 @@ function spawnHandler(
 // loadToolManifest — public entry point
 // ---------------------------------------------------------------------------
 
-export function loadToolManifest(registry: ToolRegistry, manifestPath?: string): void {
+export function loadToolManifest(registry: ToolRegistry, deps: ApprovalDeps, manifestPath?: string): void {
   const resolved = resolve(manifestPath ?? process.env.MANIFEST_PATH ?? "./tool_manifest.json");
 
   if (!existsSync(resolved)) {
@@ -290,7 +252,7 @@ export function loadToolManifest(registry: ToolRegistry, manifestPath?: string):
     }
 
     // Build Tool object
-    const tool = buildManifestTool(validEntry, handlerPath);
+    const tool = buildManifestTool(validEntry, handlerPath, deps);
 
     // Register — built-ins have collision priority
     try {
