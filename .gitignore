@@ -7,3 +7,4 @@ data/
 .DS_Store
 .pid
 mcp_config.json
+codex-tokens.json
