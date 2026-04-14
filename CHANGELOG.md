@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-04-14
+
+### Added
+- **manage_lists tool** (`src/tools/built-in/manage-lists.ts`): gestión de listas personales (compras, libros, ideas, tareas) con 8 acciones: get_lists, create_list, view_list, add_item, remove_item, toggle_item, discard_item, delete_list
+- Items con 3 estados: pending, completed, discarded — discard marca sin eliminar, toggle restaura
+- Detección de duplicados: add_item busca items exactos existentes antes de agregar, y avisa si hay similares
+- Búsqueda fuzzy segura: cuando hay múltiples matches parciales, retorna candidatos en lugar de actuar sobre el primero
+- Auto-creación de listas: add_item crea la lista automáticamente si no existe
+- Instrucciones de formato visual en soul.md: iconos ⬚/✅/❌ para pending/completed/discarded
+- SQLite migrations v6 (tablas lists + list_items) y v7 (completed INTEGER → status TEXT)
+
 ## [1.7.0] - 2026-04-13
 
 ### Changed

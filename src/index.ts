@@ -29,6 +29,7 @@ import { createExecuteCommandTool } from "./tools/built-in/execute-command.js";
 import { createDeleteMemoryTool } from "./tools/built-in/delete-memory.js";
 import { createListMemoriesTool } from "./tools/built-in/list-memories.js";
 import { createAuditMemoriesTool } from "./tools/built-in/audit-memories.js";
+import { createManageListsTool } from "./tools/built-in/manage-lists.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
@@ -99,6 +100,7 @@ async function main() {
   toolRegistry.register(createDeleteMemoryTool(memoryManager));
   toolRegistry.register(createListMemoriesTool(memoryManager));
   toolRegistry.register(createAuditMemoriesTool(memoryManager));
+  toolRegistry.register(createManageListsTool(db));
   toolRegistry.register(createProposeToolTool());
   toolRegistry.register(createTableImageTool());
   toolRegistry.register(createRestartServerTool());

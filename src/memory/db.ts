@@ -172,4 +172,59 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 5");
   }
+
+  if (currentVersion < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS lists (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_lists_user_name ON lists(user_id, name);
+
+      CREATE TABLE IF NOT EXISTS list_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        text        TEXT NOT NULL,
+        completed   INTEGER NOT NULL DEFAULT 0,
+        position    INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
+    `);
+    db.pragma("user_version = 6");
+  }
+
+  if (currentVersion < 7) {
+    // Migrate list_items: replace completed INTEGER with status TEXT
+    db.exec(`
+      ALTER TABLE list_items RENAME TO list_items_old;
+
+      CREATE TABLE list_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        text        TEXT NOT NULL,
+        status      TEXT NOT NULL DEFAULT 'pending',
+        position    INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO list_items (id, list_id, text, status, position, created_at, updated_at)
+        SELECT id, list_id, text,
+          CASE WHEN completed = 1 THEN 'completed' ELSE 'pending' END,
+          position, created_at, updated_at
+        FROM list_items_old;
+
+      DROP TABLE list_items_old;
+
+      CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
+    `);
+    db.pragma("user_version = 7");
+  }
 }
