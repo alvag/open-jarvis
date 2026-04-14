@@ -227,4 +227,44 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 7");
   }
+
+  if (currentVersion < 8) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS codebase_index (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     TEXT NOT NULL,
+        entry_type  TEXT NOT NULL,
+        key         TEXT NOT NULL,
+        summary     TEXT NOT NULL,
+        evidence    TEXT NOT NULL DEFAULT '[]',
+        confidence  TEXT NOT NULL DEFAULT 'high',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_codebase_user_key
+        ON codebase_index(user_id, entry_type, key);
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS codebase_fts USING fts5(
+        key,
+        summary,
+        content=codebase_index,
+        content_rowid=id
+      );
+
+      CREATE TRIGGER IF NOT EXISTS codebase_fts_insert AFTER INSERT ON codebase_index BEGIN
+        INSERT INTO codebase_fts(rowid, key, summary) VALUES (new.id, new.key, new.summary);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS codebase_fts_delete AFTER DELETE ON codebase_index BEGIN
+        INSERT INTO codebase_fts(codebase_fts, rowid, key, summary) VALUES ('delete', old.id, old.key, old.summary);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS codebase_fts_update AFTER UPDATE ON codebase_index BEGIN
+        INSERT INTO codebase_fts(codebase_fts, rowid, key, summary) VALUES ('delete', old.id, old.key, old.summary);
+        INSERT INTO codebase_fts(rowid, key, summary) VALUES (new.id, new.key, new.summary);
+      END;
+    `);
+    db.pragma("user_version = 8");
+  }
 }
