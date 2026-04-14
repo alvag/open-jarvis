@@ -8,3 +8,4 @@ data/
 .pid
 mcp_config.json
 codex-tokens.json
+.worktrees/

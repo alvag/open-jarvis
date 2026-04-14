@@ -84,3 +84,4 @@ Edit `soul.md` to change Jarvis's personality, tone, and rules.
 Rules added via `/learn:from` after mistakes:
 
 - Al completar una fase del PLAN.md o un cambio significativo, siempre: (1) marcar la fase como completada en PLAN.md si existe, (2) hacer bump de versión en package.json, y (3) actualizar CHANGELOG.md con los cambios realizados — todo antes del commit final o merge.
+- Para cambios grandes, relevantes o críticos que afecten el funcionamiento del bot (nuevas features, refactors de múltiples archivos, cambios en la DB o en el agent loop), siempre crear una rama `feature/` o `fix/` antes de implementar y mergear a `main` al finalizar.
