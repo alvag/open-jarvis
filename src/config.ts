@@ -121,6 +121,7 @@ export const config = {
     validationCommands: (process.env.WORKFLOW_VALIDATION_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
     autoCleanupWorktree: process.env.WORKFLOW_AUTO_CLEANUP_WORKTREE !== "false",
   },
+  extraSafeCommands: (process.env.EXTRA_SAFE_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
   codeReview: {
     enabled: process.env.CODE_REVIEW_ENABLED === "true",
     times: (process.env.CODE_REVIEW_TIMES || "14:00").split(",").map(s => s.trim()).filter(Boolean),

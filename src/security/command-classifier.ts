@@ -135,6 +135,17 @@ export function classifyCommand(
  *
  * Used by the execute_command tool to explain WHY a command was blocked.
  */
+/**
+ * Register additional commands as safe at runtime.
+ * Used to extend the hardcoded safe list via config (EXTRA_SAFE_COMMANDS)
+ * or auto-derived from WORKFLOW_VALIDATION_COMMANDS.
+ */
+export function addSafeCommands(commands: string[]): void {
+  for (const cmd of commands) {
+    if (cmd) SAFE_COMMANDS.add(cmd);
+  }
+}
+
 export function getBlockReason(command: string, args: string[]): string | null {
   const fullInvocation = [command, ...args].join(" ");
 

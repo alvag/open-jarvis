@@ -13,6 +13,7 @@ import { createLogger } from "./logger.js";
 const log = createLogger("main");
 
 // Built-in tools
+import { addSafeCommands } from "./security/command-classifier.js";
 import { createGetCurrentTimeTool } from "./tools/built-in/get-current-time.js";
 import { createSaveMemoryTool } from "./tools/built-in/save-memory.js";
 import { createSearchMemoriesTool } from "./tools/built-in/search-memories.js";
@@ -110,6 +111,20 @@ async function main() {
     sendResult: (userId, text) =>
       telegram.sendMessage(userId, text),
   };
+
+  // 3b. Register extra safe commands
+  if (config.extraSafeCommands.length > 0) {
+    addSafeCommands(config.extraSafeCommands);
+    log.info({ commands: config.extraSafeCommands }, "Extra safe commands registered");
+  }
+
+  if (config.workflow.enabled && config.workflow.validationCommands.length > 0) {
+    const workflowExecutables = [...new Set(
+      config.workflow.validationCommands.map(cmd => cmd.split(/\s+/)[0]),
+    )];
+    addSafeCommands(workflowExecutables);
+    log.info({ commands: workflowExecutables }, "Workflow validation executables added to safe commands");
+  }
 
   // 4. Register tools
   const toolRegistry = new ToolRegistry();
