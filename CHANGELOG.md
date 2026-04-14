@@ -4,6 +4,14 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-04-13
+
+### Changed
+- **Soul System v2**: `loadSoul()` ahora retorna `SoulContent { soul, agentRules? }` en lugar de un string plano
+- `AGENTS.md` se carga en `soul.ts` (antes se cargaba a nivel de módulo en `context-builder.ts`)
+- `buildSystemPrompt()`, `runAgent()` y `SchedulerDeps` actualizados para recibir `SoulContent`
+- Eliminado el singleton de módulo `agentRules` en `context-builder.ts` — responsabilidad centralizada en `soul.ts`
+
 ## [1.6.0] - 2026-04-13
 
 ### Added

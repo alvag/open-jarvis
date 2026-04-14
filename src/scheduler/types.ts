@@ -2,6 +2,7 @@ import type { AgentContext, AgentResponse } from "../types.js";
 import type { LLMProvider } from "../llm/llm-provider.js";
 import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
+import type { SoulContent } from "../memory/soul.js";
 
 export type TaskType = "reminder" | "task" | "briefing" | "pr-monitor" | "consolidation";
 export type TaskStatus = "active" | "paused" | "completed" | "failed";
@@ -32,12 +33,12 @@ export interface SchedulerDeps {
     llm: LLMProvider,
     toolRegistry: ToolRegistry,
     memoryManager: MemoryManager,
-    soulContent: string,
+    soul: SoulContent,
     maxIterations: number,
   ) => Promise<AgentResponse>;
   llm: LLMProvider;
   toolRegistry: ToolRegistry;
   memoryManager: MemoryManager;
-  soulContent: string;
+  soul: SoulContent;
   maxIterations: number;
 }

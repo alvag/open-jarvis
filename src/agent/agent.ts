@@ -2,6 +2,7 @@ import type { AgentContext, AgentResponse, ChatMessage } from "../types.js";
 import type { LLMProvider } from "../llm/llm-provider.js";
 import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
+import type { SoulContent } from "../memory/soul.js";
 import { buildSystemPrompt } from "./context-builder.js";
 import { classifyComplexity } from "../llm/model-router.js";
 import { matchByMessage, matchByTool } from "../skills/skill-loader.js";
@@ -14,7 +15,7 @@ export async function runAgent(
   llm: LLMProvider,
   toolRegistry: ToolRegistry,
   memoryManager: MemoryManager,
-  soulContent: string,
+  soul: SoulContent,
   maxIterations: number,
 ): Promise<AgentResponse> {
   const startTime = Date.now();
@@ -27,7 +28,7 @@ export async function runAgent(
 
   // Build system prompt with personality + memories + matched skills
   const systemMessage = buildSystemPrompt(
-    soulContent,
+    soul,
     context.userId,
     context.userMessage,
     memoryManager,

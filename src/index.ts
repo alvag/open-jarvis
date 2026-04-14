@@ -72,7 +72,7 @@ async function main() {
   }
 
   // 2. Load personality
-  const soulContent = loadSoul(config.paths.soul);
+  const soul = loadSoul(config.paths.soul);
 
   // 3. Initialize Telegram channel + approval gate (needed before tool registration)
   const telegram = new TelegramChannel(
@@ -207,7 +207,7 @@ async function main() {
         llm,
         toolRegistry,
         memoryManager,
-        soulContent,
+        soul,
         config.agent.maxIterations,
       );
 
@@ -240,7 +240,7 @@ async function main() {
     llm,
     toolRegistry,
     memoryManager,
-    soulContent,
+    soul,
     maxIterations: config.agent.maxIterations,
   };
   startScheduler(schedulerDeps);

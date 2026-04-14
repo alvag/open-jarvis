@@ -140,7 +140,7 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
         deps.llm,
         deps.toolRegistry,
         deps.memoryManager,
-        deps.soulContent,
+        deps.soul,
         deps.maxIterations,
       );
     } else {
@@ -160,7 +160,7 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
         deps.llm,
         deps.toolRegistry,
         deps.memoryManager,
-        deps.soulContent,
+        deps.soul,
         deps.maxIterations,
       );
     }

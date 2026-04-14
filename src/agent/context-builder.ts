@@ -1,31 +1,21 @@
-import { readFileSync } from "node:fs";
 import type { ChatMessage } from "../types.js";
 import type { Memory, MemoryManager } from "../memory/memory-manager.js";
 import type { Skill } from "../skills/skill-loader.js";
-
-function loadAgentRules(): string {
-  try {
-    return readFileSync("./AGENTS.md", "utf-8");
-  } catch {
-    return "";
-  }
-}
-
-const agentRules = loadAgentRules();
+import type { SoulContent } from "../memory/soul.js";
 
 export function buildSystemPrompt(
-  soulContent: string,
+  soul: SoulContent,
   userId: string,
   userMessage: string,
   memoryManager: MemoryManager,
   hasMcpTools: boolean = false,
   skills: Skill[] = [],
 ): ChatMessage {
-  const parts: string[] = [soulContent];
+  const parts: string[] = [soul.soul];
 
   // Agent rules
-  if (agentRules) {
-    parts.push("\n" + agentRules);
+  if (soul.agentRules) {
+    parts.push("\n" + soul.agentRules);
   }
 
   // Current date/time
