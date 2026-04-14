@@ -4,6 +4,20 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-04-14
+
+### Added
+- **Codebase analysis tools**: 4 new read-only tools for code understanding
+  - `read_file`: read source files with line numbers and optional line ranges
+  - `list_directory`: explore directory structure as indented tree with file sizes
+  - `search_code`: regex/text search across files with context lines (grep-like)
+  - `codebase_map`: persist/query structured codebase knowledge (semantic index with FTS5)
+- `src/security/path-validator.ts`: shared path validation with jail check, ignore patterns, and sensitive file blocking
+- `skills/code-analysis.md`: skill that guides the agent's code analysis strategy (evidence-based, structured output)
+- Config: `CODEBASE_ENABLED`, `CODEBASE_ROOT`, `CODEBASE_MAX_FILE_SIZE`, `CODEBASE_MAX_OUTPUT`, `CODEBASE_IGNORE`
+- SQLite migration v8: `codebase_index` table + `codebase_fts` virtual table with sync triggers
+- Model router: codebase-related keywords now route to complex model tier
+
 ## [1.9.0] - 2026-04-14
 
 ### Added

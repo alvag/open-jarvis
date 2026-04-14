@@ -31,6 +31,10 @@ import { createDeleteMemoryTool } from "./tools/built-in/delete-memory.js";
 import { createListMemoriesTool } from "./tools/built-in/list-memories.js";
 import { createAuditMemoriesTool } from "./tools/built-in/audit-memories.js";
 import { createManageListsTool } from "./tools/built-in/manage-lists.js";
+import { createReadFileTool } from "./tools/built-in/read-file.js";
+import { createListDirectoryTool } from "./tools/built-in/list-directory.js";
+import { createSearchCodeTool } from "./tools/built-in/search-code.js";
+import { createCodebaseMapTool } from "./tools/built-in/codebase-map.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
@@ -145,6 +149,15 @@ async function main() {
   if (config.firecrawl.enabled) {
     toolRegistry.register(createWebScrapeTool(config.firecrawl.apiKey));
     log.info("Web scrape tool enabled (Firecrawl)");
+  }
+
+  // Codebase analysis tools (conditional)
+  if (config.codebase.enabled) {
+    toolRegistry.register(createReadFileTool(config.codebase));
+    toolRegistry.register(createListDirectoryTool(config.codebase));
+    toolRegistry.register(createSearchCodeTool(config.codebase));
+    toolRegistry.register(createCodebaseMapTool(db));
+    log.info("Codebase analysis tools enabled");
   }
 
   // Shell execution tool (always registered — security handled inside the tool)

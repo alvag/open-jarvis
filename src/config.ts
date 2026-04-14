@@ -106,4 +106,11 @@ export const config = {
     consolidationEnabled: process.env.CONSOLIDATION_ENABLED !== "false",
     consolidationTime: process.env.CONSOLIDATION_TIME || "23:00",
   },
+  codebase: {
+    enabled: process.env.CODEBASE_ENABLED !== "false",
+    root: process.env.CODEBASE_ROOT || process.cwd(),
+    maxFileSize: parseInt(process.env.CODEBASE_MAX_FILE_SIZE || "102400", 10),
+    maxOutputChars: parseInt(process.env.CODEBASE_MAX_OUTPUT || "6000", 10),
+    ignorePatterns: (process.env.CODEBASE_IGNORE || "node_modules,.git,dist,data,.env,*.db,codex-tokens.json,mcp_config.json").split(",").map(s => s.trim()),
+  },
 } as const;
