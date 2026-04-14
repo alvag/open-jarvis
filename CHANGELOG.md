@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-04-14
+
+### Added
+- **Refactor opportunity identification**: programmatic pre-screening tool + skill for detecting and prioritizing refactoring opportunities with technical justification
+  - `find_refactor_candidates`: tool with 7 analyzers (long functions, god objects, code duplication, coupling, conditional complexity, dead exports, error handling patterns, hardcoded values)
+  - 3 analysis modes: `file` (single file), `module` (directory), `flow` (entry file + transitive imports)
+  - Progressive output truncation to respect token budget
+  - `skills/refactor-analysis.md`: skill with 6-phase workflow, anti-hallucination rules, priority classification (quick_win/important_careful/later), and counter-indication awareness
+- **Shared codebase module**: extracted `FileInfo`, `collectFiles`, `fmtBytes` from `analyze-codebase.ts` into `codebase-shared.ts` for reuse across codebase tools
+- Model router: refactoring-related keywords (`smell`, `dead code`, `duplica`, `acoplamiento`, `coupling`) now route to complex model tier
+
 ## [1.11.0] - 2026-04-14
 
 ### Added
