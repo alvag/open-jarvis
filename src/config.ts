@@ -88,6 +88,11 @@ export const config = {
     enabled: !!process.env.FIRECRAWL_API_KEY,
     apiKey: process.env.FIRECRAWL_API_KEY || "",
   },
+  transcription: {
+    enabled: !!process.env.GROQ_API_KEY,
+    apiKey: process.env.GROQ_API_KEY || "",
+    language: process.env.TRANSCRIPTION_LANGUAGE || "es",
+  },
   paths: {
     database: process.env.DB_PATH || "./data/jarvis.db",
     soul: process.env.SOUL_PATH || "./soul.md",

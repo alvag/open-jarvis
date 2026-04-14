@@ -4,6 +4,15 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-04-14
+
+### Added
+- **Voice message transcription** via Groq Whisper (`whisper-large-v3-turbo`)
+- `src/transcription/transcriber.ts`: Transcriber interface + GroqTranscriber implementation
+- `skills/voice-messages.md`: skill para manejo inteligente de mensajes de voz transcritos
+- Config: `GROQ_API_KEY` (opcional), `TRANSCRIPTION_LANGUAGE` (default: "es")
+- Graceful degradation: handler de voz solo activo cuando `GROQ_API_KEY` está configurada
+
 ## [1.8.0] - 2026-04-14
 
 ### Added

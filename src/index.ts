@@ -6,6 +6,7 @@ import { ToolRegistry } from "./tools/tool-registry.js";
 import { OpenRouterProvider } from "./llm/openrouter.js";
 import { CodexProvider } from "./llm/codex-provider.js";
 import { TelegramChannel } from "./channels/telegram.js";
+import { GroqTranscriber } from "./transcription/transcriber.js";
 import { runAgent } from "./agent/agent.js";
 import { createLogger } from "./logger.js";
 
@@ -83,6 +84,13 @@ async function main() {
 
   const approvalGate = createApprovalGate(db);
   telegram.setApprovalGate(approvalGate);
+
+  if (config.transcription.enabled) {
+    telegram.setTranscriber(
+      new GroqTranscriber(config.transcription.apiKey, config.transcription.language)
+    );
+    log.info({ language: config.transcription.language }, "Voice transcription enabled (Groq Whisper)");
+  }
 
   const approvalDeps: ApprovalDeps = {
     approvalGate,

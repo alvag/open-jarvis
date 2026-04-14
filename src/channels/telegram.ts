@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Channel, MessageHandler, IncomingMessage, Attachment } from "./channel.js";
+import type { Transcriber } from "../transcription/transcriber.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger("telegram");
@@ -17,6 +18,7 @@ export class TelegramChannel implements Channel {
   private bot: Bot;
   private allowedUserIds: Set<number>;
   private approvalGate: ApprovalGate | null = null;
+  private transcriber: Transcriber | null = null;
 
   constructor(token: string, allowedUserIds: number[]) {
     this.bot = new Bot(token);
@@ -25,6 +27,10 @@ export class TelegramChannel implements Channel {
 
   setApprovalGate(gate: ApprovalGate): void {
     this.approvalGate = gate;
+  }
+
+  setTranscriber(transcriber: Transcriber): void {
+    this.transcriber = transcriber;
   }
 
   async sendApprovalMessage(userId: string, text: string, approvalId: string): Promise<void> {
@@ -121,6 +127,45 @@ export class TelegramChannel implements Channel {
         await ctx.reply("No pude descargar el archivo. Intentá de nuevo.");
       }
     });
+
+    // Voice messages
+    if (this.transcriber) {
+      const transcriber = this.transcriber;
+
+      this.bot.on("message:voice", async (ctx) => {
+        const voice = ctx.message.voice;
+        const duration = voice.duration;
+
+        try {
+          const file = await ctx.api.getFile(voice.file_id);
+          const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+          const res = await fetch(fileUrl);
+          const buffer = Buffer.from(await res.arrayBuffer());
+
+          const fileName = `voice_${Date.now()}.ogg`;
+          const filePath = join(UPLOADS_DIR, fileName);
+          writeFileSync(filePath, buffer);
+
+          const result = await transcriber.transcribe(filePath);
+
+          if (!result.text || result.text.trim().length === 0) {
+            await ctx.reply("No pude entender el audio. ¿Puedes repetirlo o escribirlo?");
+            return;
+          }
+
+          const durationStr = formatDuration(duration);
+          const text = `[Mensaje de voz, ${durationStr}] ${result.text}`;
+          await this.handleIncoming(ctx, text, [], handler);
+        } catch (err) {
+          log.error({ error: (err as Error).message, duration }, "error processing voice message");
+          await ctx.reply("No pude procesar el mensaje de voz. Intenta de nuevo.");
+        }
+      });
+    } else {
+      this.bot.on("message:voice", async (ctx) => {
+        await ctx.reply("Los mensajes de voz no están disponibles. Escríbeme en texto.");
+      });
+    }
 
     // Approval gate callback handler (registered once at startup)
     this.bot.on("callback_query:data", async (ctx) => {
@@ -269,6 +314,13 @@ export class TelegramChannel implements Channel {
  * and inline code verbatim. Splits text into code/non-code segments and only
  * applies transformations to non-code segments.
  */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return sec > 0 ? `${min}m${sec}s` : `${min}m`;
+}
+
 function sanitizeTelegramMarkdown(text: string): string {
   // Split into segments: fenced code blocks, inline code, and prose
   const segments = text.split(/(```[\s\S]*?```|`[^`\n]+`)/g);
