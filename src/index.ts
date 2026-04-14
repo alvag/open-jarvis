@@ -37,6 +37,7 @@ import { createSearchCodeTool } from "./tools/built-in/search-code.js";
 import { createCodebaseMapTool } from "./tools/built-in/codebase-map.js";
 import { createAnalyzeCodebaseTool } from "./tools/built-in/analyze-codebase.js";
 import { createFindRefactorCandidatesTool } from "./tools/built-in/find-refactor-candidates.js";
+import { createDetectBugsTool } from "./tools/built-in/detect-bugs.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
@@ -161,6 +162,7 @@ async function main() {
     toolRegistry.register(createCodebaseMapTool(db));
     toolRegistry.register(createAnalyzeCodebaseTool(config.codebase));
     toolRegistry.register(createFindRefactorCandidatesTool(config.codebase));
+    toolRegistry.register(createDetectBugsTool(config.codebase));
     log.info("Codebase analysis tools enabled");
   }
 

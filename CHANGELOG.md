@@ -4,6 +4,16 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-04-14
+
+### Added
+- **Evidence-based bug detection and triage**: programmatic tool + skill for detecting potential bugs with verifiable evidence and structured triage
+  - `detect_bugs`: tool with 8 code pattern detectors (empty catches, null dereference risks, unhandled async/promises, type coercion, race conditions, unreachable code, off-by-one indicators, resource leaks), git diff regression analysis (new empty catches, removed null checks, removed error handling), and application log analysis (pino JSON format)
+  - Parameterized scope: explicit `path` (file or directory) or auto-detect from git-changed files; `focus` filter (all/patterns/git/logs); configurable `git_depth`
+  - Heuristic severity classification based on file domain context (auth/payment/persistence get severity bump, test files get lowered)
+  - Progressive output truncation to respect token budget
+  - `skills/bug-triage.md`: skill with 7-phase workflow (scan, deep read, cross-reference, enrich, filter, prioritize, present), structured per-finding format with root cause hypothesis and reproduction steps, anti-hallucination rules, and uncertainty declaration
+
 ## [1.12.0] - 2026-04-14
 
 ### Added
