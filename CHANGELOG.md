@@ -4,6 +4,35 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-04-14
+
+### Added
+- **Proactive automated code review**: scheduled task that periodically analyzes the codebase and creates backlog items for findings
+  - `manage_code_review_log`: tool for tracking review progress per file (upsert, get_file, list_reviewed, stats)
+  - `src/scheduler/code-review.ts`: dynamic prompt builder with hybrid file selection algorithm — git-changed files (priority, uncapped) + unreviewed/oldest backlog files (configurable cap)
+  - Git checkpoint mechanism that only advances after successful review runs with no deferred files, preventing loss of pending reviews on failures
+  - Auto-fix flow: if high-confidence quick-wins are found and no Jarvis PR is open, automatically triggers development-workflow to create a fix PR
+  - Telegram notification with detailed summary of findings by severity
+  - Auto-seed: cron job created automatically at startup when `CODE_REVIEW_ENABLED=true`
+  - DB migration v10: `code_review_log` table with per-file review state tracking
+  - Config: `CODE_REVIEW_ENABLED`, `CODE_REVIEW_TIMES`, `CODE_REVIEW_MAX_BACKLOG_FILES`
+
+### Fixed
+- `github_prs` tool now uses configured `codebaseRoot` as working directory instead of `process.cwd()`, fixing PR operations when `CODEBASE_ROOT` differs from launch directory
+- Added `.worktrees` to default `CODEBASE_IGNORE` to prevent scanning worktree copies as duplicate source files
+
+## [1.14.0] - 2026-04-14
+
+### Added
+- **Worktree dev workflow with backlog and GitHub PRs**: complete pipeline for detecting, tracking, and fixing issues in isolated worktrees with human review
+  - `manage_backlog`: tool for managing a prioritized backlog of codebase findings (bugs, refactors, improvements) with SQLite persistence, deduplication by source tool + finding ID, severity-based priority ordering, and lifecycle tracking (open -> in_progress -> pr_created -> merged/dismissed)
+  - `git_worktree`: tool for creating, listing, removing, and checking status of isolated git worktrees with branch naming enforcement (`jarvis/fix-*`, `jarvis/refactor-*`, `jarvis/feat-*`) and path traversal protection
+  - `github_prs`: tool wrapping `gh` CLI for listing, creating, and checking status of GitHub PRs, with automatic availability/auth verification and local mode fallback when `gh` is not available
+  - `skills/development-workflow.md`: orchestration skill with 10-phase workflow (verify gh, gate check, reconcile, select, confirm, prepare, implement, validate, deliver, report), enforcing one-PR-at-a-time constraint and human-only merging
+  - DB migration v9: `backlog_items` table with category, severity, confidence, status lifecycle, PR tracking, and source traceability
+  - Config section `workflow` with configurable default branch, worktree directory, branch prefix, and validation commands
+- **Backlog integration in analysis skills**: `bug-triage.md`, `refactor-analysis.md`, and `codebase-improvement.md` now offer to save confirmed findings to the backlog for later execution
+
 ## [1.13.0] - 2026-04-14
 
 ### Added

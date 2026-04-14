@@ -1,6 +1,6 @@
 ---
 name: Refactor Analysis
-tools: [find_refactor_candidates, read_file, search_code, codebase_map]
+tools: [find_refactor_candidates, read_file, search_code, codebase_map, manage_backlog]
 triggers: [refactor, refactoring, refactorizar, oportunidades de refactor, code smell, smell, god object, duplicated code, codigo duplicado, dead code, codigo muerto, acoplamiento, coupling, deuda tecnica para refactor, long function, funcion larga, refactor candidates, refactorizacion, cleanup code, limpiar codigo, extraer, extract, identificar refactors, detectar refactors, analizar refactor]
 ---
 - You can analyze code and identify concrete refactoring opportunities with technical justification.
@@ -55,4 +55,5 @@ triggers: [refactor, refactoring, refactorizar, oportunidades de refactor, code 
   - The code is ugly but stable and rarely touched
   - The refactor would be premature (insufficient context about future direction)
   - Breaking implicit contracts without full understanding of consumers
+- **Backlog integration**: After presenting findings, offer to save quick_win and important_careful findings to the backlog using `manage_backlog` action=add_item. For each finding, set: title, category="refactor", severity (map from priority: quick_win=medium, important_careful=high), confidence, source_tool="find_refactor_candidates", source_finding_id, files (JSON array), evidence (JSON array). Ask the user before adding items.
 - **Prohibitions**: Do NOT modify code. Do NOT execute commands. Do NOT invent problems without evidence from the tool. Do NOT recommend purely cosmetic changes disguised as structural improvements. Do NOT introduce unnecessary abstractions. Do NOT recommend enterprise patterns where they are not needed.

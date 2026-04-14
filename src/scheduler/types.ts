@@ -4,7 +4,7 @@ import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
 import type { SoulContent } from "../memory/soul.js";
 
-export type TaskType = "reminder" | "task" | "briefing" | "pr-monitor" | "consolidation";
+export type TaskType = "reminder" | "task" | "briefing" | "pr-monitor" | "consolidation" | "code-review";
 export type TaskStatus = "active" | "paused" | "completed" | "failed";
 
 export interface ScheduledTaskRow {

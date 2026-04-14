@@ -143,6 +143,35 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
         deps.soul,
         deps.maxIterations,
       );
+    } else if (fresh.type === "code-review") {
+      const { buildCodeReviewPrompt, advanceCodeReviewCheckpoint } = await import("./code-review.js");
+      const { config } = await import("../config.js");
+      const { prompt: dynamicPrompt, hasDeferredFiles } = buildCodeReviewPrompt(
+        deps.db,
+        fresh.user_id,
+        config.codebase.root,
+        config.codebase.ignorePatterns,
+        config.codeReview.maxBacklogFiles,
+      );
+      const sessionId = deps.memoryManager.resolveSession(fresh.user_id, "scheduler", 0);
+      await deps.runAgent(
+        {
+          userId: fresh.user_id,
+          userName: "scheduler",
+          channelId: "scheduler",
+          sessionId,
+          userMessage: dynamicPrompt,
+        },
+        deps.llm,
+        deps.toolRegistry,
+        deps.memoryManager,
+        deps.soul,
+        deps.maxIterations,
+      );
+      // Advance checkpoint only after successful run and no deferred files
+      if (!hasDeferredFiles) {
+        advanceCodeReviewCheckpoint(deps.db);
+      }
     } else {
       const sessionId = deps.memoryManager.resolveSession(
         fresh.user_id,
