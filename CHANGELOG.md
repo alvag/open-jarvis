@@ -4,6 +4,15 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-04-14
+
+### Added
+- **Codebase improvement analysis**: programmatic analyzer + skill for diagnosing and proposing improvements
+  - `analyze_codebase`: tool that scans structure, complexity, dependencies, quality signals, and config patterns in one call
+  - 5 analyzers: structure (file distribution, sizes), complexity (long functions, deep nesting), dependencies (import graph, hubs, circulars), quality (TODOs, commented code, any types, console.logs), config (env vars, scattered defaults, hardcoded URLs)
+  - Progressive output truncation to respect token budget
+  - `skills/codebase-improvement.md`: skill that guides prioritized improvement proposals with evidence, categorization, and anti-hallucination rules
+
 ## [1.10.0] - 2026-04-14
 
 ### Added
