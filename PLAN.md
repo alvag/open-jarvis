@@ -169,7 +169,7 @@ export function createSaveMemoryTool(memoryManager: MemoryManager): Tool {
 
 ### Fase 4: Mejoras de Memoria
 
-**Estado**: [ ] Pendiente
+**Estado**: [x] Completada — v1.6 (2026-04-13)
 **Dependencias**: Ninguna
 **Deps nuevas**: `@secretlint/node`, `@secretlint/secretlint-rule-preset-recommend`
 

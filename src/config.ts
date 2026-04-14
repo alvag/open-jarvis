@@ -58,6 +58,9 @@ export const config = {
       process.env.SESSION_RETENTION_DAYS || "30",
       10,
     ),
+    primaryUserId: String(
+      (process.env.PRIMARY_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || "").split(",")[0].trim(),
+    ),
   },
   google: {
     enabled: {
@@ -95,5 +98,7 @@ export const config = {
     briefingEnabled: process.env.BRIEFING_ENABLED !== "false",
     prPollIntervalMinutes: parseInt(process.env.PR_POLL_INTERVAL_MINUTES || "15", 10),
     prMonitorEnabled: process.env.PR_MONITOR_ENABLED !== "false",
+    consolidationEnabled: process.env.CONSOLIDATION_ENABLED !== "false",
+    consolidationTime: process.env.CONSOLIDATION_TIME || "23:00",
   },
 } as const;

@@ -4,6 +4,23 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-04-13
+
+### Added
+- **Memory sanitizer** (`src/memory/memory-sanitizer.ts`): detección de secrets (API keys, tokens, passwords) via `@secretlint/node` con singleton lazy. Gate en `save_memory` rechaza memorias con data sensible
+- **delete_memory tool** (`src/tools/built-in/delete-memory.ts`): borrado de memorias por ID numérico con validación
+- **list_memories tool** (`src/tools/built-in/list-memories.ts`): listado completo de memorias con filtro opcional por categoría
+- **audit_memories tool** (`src/tools/built-in/audit-memories.ts`): escaneo de todas las memorias buscando secrets, reporta IDs flaggeados sin exponer contenido sensible
+- **Memory backfill** (`src/memory/memory-backfill.ts`): migración one-time al startup que escanea memorias y memory_history existentes, borra registros con data sensible, tracked via `agent_metadata` table
+- **Daily memory consolidation** (`src/scheduler/consolidation.ts`): tarea programada a las 23:00 que usa el LLM para extraer hechos nuevos de conversaciones del día, mergear memorias duplicadas, actualizar info obsoleta y limpiar memorias de bajo valor
+- Nuevos métodos en `MemoryManager`: `getAllMemories(userId)`, `getTodaySessionMessages(userId)`
+- Nuevo task type `consolidation` en el scheduler con prompt dinámico
+- Config: `CONSOLIDATION_ENABLED` (default: true), `CONSOLIDATION_TIME` (default: "23:00")
+
+### Changed
+- `save_memory` ahora valida contenido contra secrets antes de guardar
+- Dependencias agregadas: `@secretlint/node`, `@secretlint/secretlint-rule-preset-recommend`
+
 ## [1.5.0] - 2026-04-13
 
 ### Added

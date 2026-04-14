@@ -26,6 +26,10 @@ import { createRestartServerTool } from "./tools/built-in/restart-server.js";
 import { createWebSearchTool } from "./tools/built-in/web-search.js";
 import { createWebScrapeTool } from "./tools/built-in/web-scrape.js";
 import { createExecuteCommandTool } from "./tools/built-in/execute-command.js";
+import { createDeleteMemoryTool } from "./tools/built-in/delete-memory.js";
+import { createListMemoriesTool } from "./tools/built-in/list-memories.js";
+import { createAuditMemoriesTool } from "./tools/built-in/audit-memories.js";
+import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
 import {
@@ -52,6 +56,12 @@ async function main() {
   // 1. Initialize database
   const db = initDatabase(config.paths.database);
   const memoryManager = createMemoryManager(db);
+
+  // One-time security backfill scan
+  const backfillResult = await runBackfillIfNeeded(db);
+  if (!backfillResult.skipped && backfillResult.flaggedMemories.length > 0) {
+    log.warn({ flagged: backfillResult.flaggedMemories.length }, "Backfill found memories with sensitive data — use audit_memories tool to review");
+  }
 
   // Clean up old sessions
   const deletedSessions = memoryManager.cleanupOldSessions(
@@ -86,6 +96,9 @@ async function main() {
   toolRegistry.register(createGetCurrentTimeTool());
   toolRegistry.register(createSaveMemoryTool(memoryManager));
   toolRegistry.register(createSearchMemoriesTool(memoryManager));
+  toolRegistry.register(createDeleteMemoryTool(memoryManager));
+  toolRegistry.register(createListMemoriesTool(memoryManager));
+  toolRegistry.register(createAuditMemoriesTool(memoryManager));
   toolRegistry.register(createProposeToolTool());
   toolRegistry.register(createTableImageTool());
   toolRegistry.register(createRestartServerTool());
@@ -174,15 +187,16 @@ async function main() {
   await telegram.start(async (msg) => {
     inFlightCount++;
     try {
+      const canonicalUserId = config.agent.primaryUserId;
       const sessionId = memoryManager.resolveSession(
-        msg.userId,
+        canonicalUserId,
         msg.channelId,
         config.agent.sessionTimeoutMinutes,
       );
 
       const result = await runAgent(
         {
-          userId: msg.userId,
+          userId: canonicalUserId,
           userName: msg.userName,
           channelId: msg.channelId,
           sessionId,
@@ -233,7 +247,7 @@ async function main() {
 
   // Seed built-in tasks on first startup
   function seedBuiltInTasks(): void {
-    const firstUserId = String(config.telegram.allowedUserIds[0]);
+    const firstUserId = config.agent.primaryUserId;
 
     // Morning briefing — seed if not already in DB
     if (config.scheduler.briefingEnabled) {
@@ -262,6 +276,24 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
           timezone: config.scheduler.timezone,
         });
         log.info({ time: config.scheduler.briefingTime, timezone: config.scheduler.timezone }, "Seeded morning briefing task");
+      }
+    }
+
+    // Memory consolidation — seed if not already in DB
+    if (config.scheduler.consolidationEnabled) {
+      const existing = listTasks(firstUserId).find(t => t.type === "consolidation");
+      if (!existing) {
+        const [hours, minutes] = config.scheduler.consolidationTime.split(":").map(Number);
+        const cronExpr = `${minutes} ${hours} * * *`;
+        createTask({
+          userId: firstUserId,
+          name: "Memory Consolidation",
+          type: "consolidation",
+          cronExpression: cronExpr,
+          prompt: "Run daily memory consolidation",
+          timezone: config.scheduler.timezone,
+        });
+        log.info({ time: config.scheduler.consolidationTime, timezone: config.scheduler.timezone }, "Seeded memory consolidation task");
       }
     }
 

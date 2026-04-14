@@ -1,5 +1,6 @@
 import type { Tool, ToolResult } from "../tool-types.js";
 import type { MemoryManager } from "../../memory/memory-manager.js";
+import { containsSensitiveData } from "../../memory/memory-sanitizer.js";
 
 export function createSaveMemoryTool(memoryManager: MemoryManager): Tool {
   return {
@@ -34,6 +35,15 @@ export function createSaveMemoryTool(memoryManager: MemoryManager): Tool {
     const key = args.key as string;
     const content = args.content as string;
     const category = (args.category as string) || "fact";
+
+    // Sanitization gate: reject memories containing secrets
+    if (await containsSensitiveData(content) || await containsSensitiveData(key)) {
+      return {
+        success: false,
+        data: null,
+        error: "Cannot save memory: sensitive data detected (API key, token, or password). Rephrase without including the actual secret value.",
+      };
+    }
 
     const memory = memoryManager.saveMemory(
       context.userId,

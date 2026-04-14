@@ -125,6 +125,24 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
     } else if (fresh.type === "pr-monitor") {
       const { checkPRChanges } = await import("./pr-monitor.js");
       await checkPRChanges(deps.db, deps.sendMessage, fresh.user_id);
+    } else if (fresh.type === "consolidation") {
+      const { buildConsolidationPrompt } = await import("./consolidation.js");
+      const dynamicPrompt = buildConsolidationPrompt(deps.memoryManager, fresh.user_id);
+      const sessionId = deps.memoryManager.resolveSession(fresh.user_id, "scheduler", 0);
+      await deps.runAgent(
+        {
+          userId: fresh.user_id,
+          userName: "scheduler",
+          channelId: "scheduler",
+          sessionId,
+          userMessage: dynamicPrompt,
+        },
+        deps.llm,
+        deps.toolRegistry,
+        deps.memoryManager,
+        deps.soulContent,
+        deps.maxIterations,
+      );
     } else {
       const sessionId = deps.memoryManager.resolveSession(
         fresh.user_id,

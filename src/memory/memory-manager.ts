@@ -27,8 +27,10 @@ export interface MemoryManager {
   ): Memory;
   searchMemories(userId: string, query: string, limit?: number): Memory[];
   getRecentMemories(userId: string, limit?: number): Memory[];
+  getAllMemories(userId: string): Memory[];
+  getTodaySessionMessages(userId: string): ChatMessage[];
   getMemoryHistory(memoryId: number, limit?: number): MemoryHistoryEntry[];
-  deleteMemory(id: number): boolean;
+  deleteMemory(id: number, userId: string): boolean;
   getSessionMessages(sessionId: string): ChatMessage[];
   saveSessionMessage(sessionId: string, message: ChatMessage): void;
   cleanupOldSessions(retentionDays: number): number;
@@ -83,7 +85,17 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
       ORDER BY updated_at DESC
       LIMIT ?
     `),
-    deleteMemory: db.prepare(`DELETE FROM memories WHERE id = ?`),
+    allMemories: db.prepare(`
+      SELECT * FROM memories WHERE user_id = ? ORDER BY category, key
+    `),
+    todaySessionMessages: db.prepare(`
+      SELECT sm.content FROM session_messages sm
+      JOIN sessions s ON sm.session_id = s.id
+      WHERE s.user_id = ? AND sm.role = 'user'
+      AND sm.created_at >= date('now', 'start of day')
+      ORDER BY sm.created_at ASC
+    `),
+    deleteMemory: db.prepare(`DELETE FROM memories WHERE id = ? AND user_id = ?`),
     getSessionMessages: db.prepare(`
       SELECT role, content, tool_calls, tool_call_id
       FROM session_messages
@@ -177,6 +189,17 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
       return stmts.recentMemories.all(userId, limit) as Memory[];
     },
 
+    getAllMemories(userId) {
+      return stmts.allMemories.all(userId) as Memory[];
+    },
+
+    getTodaySessionMessages(userId) {
+      const rows = stmts.todaySessionMessages.all(userId) as Array<{ content: string | null }>;
+      return rows
+        .filter((r) => r.content)
+        .map((r) => ({ role: "user" as const, content: r.content }));
+    },
+
     getMemoryHistory(memoryId, limit = 10) {
       return stmts.getMemoryHistory.all(
         memoryId,
@@ -184,8 +207,8 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
       ) as MemoryHistoryEntry[];
     },
 
-    deleteMemory(id) {
-      const result = stmts.deleteMemory.run(id);
+    deleteMemory(id, userId) {
+      const result = stmts.deleteMemory.run(id, userId);
       return result.changes > 0;
     },
 
