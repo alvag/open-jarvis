@@ -4,6 +4,22 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-04-13
+
+### Added
+- **OpenAI Codex OAuth Provider**: nuevo LLM provider que usa la suscripción de ChatGPT (Plus/Pro) via OAuth PKCE, sin costo por token
+- `src/llm/codex-provider.ts`: implementación de `LLMProvider` con SSE streaming, retry con backoff, refresh serializado de tokens, y detección de límites de uso
+- `src/llm/codex-oauth.ts`: flujo OAuth PKCE completo (generación, exchange, refresh, JWT decode)
+- `src/llm/codex-auth-cli.ts`: CLI standalone para autenticación (`npm run auth:codex`)
+- `src/llm/codex-message-adapter.ts`: traducción bidireccional Chat Completions ↔ Responses API
+- `src/llm/codex-token-store.ts`: persistencia atómica de tokens con permisos `0o600`
+- Variable `LLM_PROVIDER` para seleccionar provider (`openrouter` | `codex`) con validación
+- Modelos default: `gpt-5.4-mini` (simple), `gpt-5.4` (moderate/complex)
+
+### Changed
+- `src/config.ts`: `OPENROUTER_API_KEY` solo requerido cuando `LLM_PROVIDER=openrouter`
+- `src/index.ts`: instanciación condicional del provider según configuración
+
 ## [1.4.0] - 2026-04-13
 
 ### Changed
