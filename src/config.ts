@@ -9,7 +9,18 @@ function requireEnv(name: string): string {
   return value;
 }
 
+const VALID_LLM_PROVIDERS = ["openrouter", "codex"] as const;
+type LlmProvider = (typeof VALID_LLM_PROVIDERS)[number];
+
+const rawProvider = process.env.LLM_PROVIDER || "openrouter";
+if (!VALID_LLM_PROVIDERS.includes(rawProvider as LlmProvider)) {
+  console.error(`Invalid LLM_PROVIDER="${rawProvider}". Must be one of: ${VALID_LLM_PROVIDERS.join(", ")}`);
+  process.exit(1);
+}
+const llmProvider = rawProvider as LlmProvider;
+
 export const config = {
+  llmProvider,
   telegram: {
     botToken: requireEnv("TELEGRAM_BOT_TOKEN"),
     allowedUserIds: requireEnv("TELEGRAM_ALLOWED_USER_IDS")
@@ -17,7 +28,7 @@ export const config = {
       .map((id) => parseInt(id.trim(), 10)),
   },
   openrouter: {
-    apiKey: requireEnv("OPENROUTER_API_KEY"),
+    apiKey: llmProvider === "openrouter" ? requireEnv("OPENROUTER_API_KEY") : (process.env.OPENROUTER_API_KEY || ""),
     models: {
       simple:
         process.env.OPENROUTER_MODEL_SIMPLE ||
@@ -28,6 +39,13 @@ export const config = {
       complex:
         process.env.OPENROUTER_MODEL_COMPLEX ||
         "anthropic/claude-sonnet-4.6",
+    },
+  },
+  codex: {
+    models: {
+      simple: process.env.CODEX_MODEL_SIMPLE || "gpt-5.4-mini",
+      moderate: process.env.CODEX_MODEL_MODERATE || "gpt-5.4",
+      complex: process.env.CODEX_MODEL_COMPLEX || "gpt-5.4",
     },
   },
   agent: {

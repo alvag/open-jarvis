@@ -4,6 +4,7 @@ import { createMemoryManager } from "./memory/memory-manager.js";
 import { loadSoul } from "./memory/soul.js";
 import { ToolRegistry } from "./tools/tool-registry.js";
 import { OpenRouterProvider } from "./llm/openrouter.js";
+import { CodexProvider } from "./llm/codex-provider.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { runAgent } from "./agent/agent.js";
 import { createLogger } from "./logger.js";
@@ -158,12 +159,12 @@ async function main() {
   const hasMcpTools = mcpSummary.toolsRegistered > 0;
 
   // 5. Initialize LLM with model tiers
-  const llm = new OpenRouterProvider(
-    config.openrouter.apiKey,
-    config.openrouter.models,
-  );
+  const llm = config.llmProvider === "codex"
+    ? new CodexProvider(config.codex.models)
+    : new OpenRouterProvider(config.openrouter.apiKey, config.openrouter.models);
 
-  log.info({ models: config.openrouter.models }, "Model tiers loaded");
+  const activeModels = config.llmProvider === "codex" ? config.codex.models : config.openrouter.models;
+  log.info({ provider: config.llmProvider, models: activeModels }, "LLM provider loaded");
 
   // In-flight agent tracking for graceful shutdown (SUP-01)
   let inFlightCount = 0;

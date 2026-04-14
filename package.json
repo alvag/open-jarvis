@@ -10,7 +10,8 @@
     "stop": "if [ -f .pid ] && kill -0 $(cat .pid) 2>/dev/null; then kill $(cat .pid) && rm -f .pid && echo 'Jarvis stopped'; else rm -f .pid && echo 'Not running'; fi",
     "start:bot": "node --import tsx src/index.ts",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "auth:codex": "tsx src/llm/codex-auth-cli.ts"
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^4.16.0",
