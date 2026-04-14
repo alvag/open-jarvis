@@ -2,6 +2,7 @@ import type { ChatMessage } from "../types.js";
 import type { Memory, MemoryManager } from "../memory/memory-manager.js";
 import type { Skill } from "../skills/skill-loader.js";
 import type { SoulContent } from "../memory/soul.js";
+import { resolveTone } from "../tone/tone-profiles.js";
 
 export function buildSystemPrompt(
   soul: SoulContent,
@@ -12,6 +13,15 @@ export function buildSystemPrompt(
   skills: Skill[] = [],
 ): ChatMessage {
   const parts: string[] = [soul.soul];
+
+  // Tone override: user's explicit tone preference
+  const tonePref = memoryManager.getMemoryByKey(userId, "response_tone");
+  if (tonePref) {
+    const profile = resolveTone(tonePref.content);
+    if (profile && profile.instructions) {
+      parts.push("\n" + profile.instructions);
+    }
+  }
 
   // Agent rules
   if (soul.agentRules) {

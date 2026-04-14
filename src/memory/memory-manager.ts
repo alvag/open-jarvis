@@ -28,6 +28,7 @@ export interface MemoryManager {
   searchMemories(userId: string, query: string, limit?: number): Memory[];
   getRecentMemories(userId: string, limit?: number): Memory[];
   getAllMemories(userId: string): Memory[];
+  getMemoryByKey(userId: string, key: string): Memory | undefined;
   getTodaySessionMessages(userId: string): ChatMessage[];
   getMemoryHistory(memoryId: number, limit?: number): MemoryHistoryEntry[];
   deleteMemory(id: number, userId: string): boolean;
@@ -191,6 +192,10 @@ export function createMemoryManager(db: Database.Database): MemoryManager {
 
     getAllMemories(userId) {
       return stmts.allMemories.all(userId) as Memory[];
+    },
+
+    getMemoryByKey(userId, key) {
+      return stmts.findMemoryByKey.get(userId, key) as Memory | undefined;
     },
 
     getTodaySessionMessages(userId) {

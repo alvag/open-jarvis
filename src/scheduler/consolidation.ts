@@ -61,7 +61,7 @@ Delete memories that are:
 
 ## Rules
 - Be conservative: when in doubt, keep the memory
-- Never delete memories about health, allergies, important dates, or strong preferences
+- Never delete memories about health, allergies, important dates, strong preferences, or system settings (keys like "response_tone")
 - Each save_memory/delete_memory call should be deliberate — explain your reasoning before each action
 - If there's nothing to do, that's fine — not every day requires changes`;
 
