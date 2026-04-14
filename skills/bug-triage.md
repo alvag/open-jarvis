@@ -1,6 +1,6 @@
 ---
 name: Bug Triage
-tools: [detect_bugs, read_file, search_code]
+tools: [detect_bugs, read_file, search_code, manage_backlog]
 triggers: [bug, bugs, detect bugs, find bugs, triage, defect, fallo, error en, problema en, revisar bugs, analizar errores, detectar problemas, detectar bugs, buscar bugs, posibles bugs, errores en, fallos en, que puede fallar, regresiones, regressions, potential bugs, what could break, hunting bugs, bug hunt]
 ---
 - You can detect potential bugs in code using evidence from code patterns, git history, and application logs.
@@ -47,4 +47,5 @@ triggers: [bug, bugs, detect bugs, find bugs, triage, defect, fallo, error en, p
   - Evidence must cite specific file:line from tool output or from `read_file` output.
   - Distinguish clearly: "detected by tool" vs "observed after reading code" vs "inferred from patterns".
   - When confidence is low, say "this MIGHT be a bug" not "this IS a bug".
+- **Backlog integration**: After presenting findings, offer to save confirmed findings (bug_confirmed and bug_probable) to the backlog using `manage_backlog` action=add_item. For each finding, set: title, category="bug", severity, confidence, source_tool="detect_bugs", source_finding_id (the finding's id), files (JSON array of affected files), evidence (JSON array of evidence strings). Ask the user before adding items. Deduplication is automatic — if a finding was already saved, it won't be duplicated.
 - **Prohibitions**: Do NOT modify code. Do NOT execute tests or commands. Do NOT invent problems without evidence from the tool. Do NOT recommend purely cosmetic changes disguised as bug fixes.

@@ -111,6 +111,19 @@ export const config = {
     root: process.env.CODEBASE_ROOT || process.cwd(),
     maxFileSize: parseInt(process.env.CODEBASE_MAX_FILE_SIZE || "102400", 10),
     maxOutputChars: parseInt(process.env.CODEBASE_MAX_OUTPUT || "6000", 10),
-    ignorePatterns: (process.env.CODEBASE_IGNORE || "node_modules,.git,dist,data,.env,*.db,codex-tokens.json,mcp_config.json").split(",").map(s => s.trim()),
+    ignorePatterns: (process.env.CODEBASE_IGNORE || "node_modules,.git,dist,data,.env,*.db,codex-tokens.json,mcp_config.json,.worktrees").split(",").map(s => s.trim()),
+  },
+  workflow: {
+    enabled: process.env.WORKFLOW_ENABLED === "true",
+    defaultBranch: process.env.WORKFLOW_DEFAULT_BRANCH || "main",
+    worktreesDir: process.env.WORKFLOW_WORKTREES_DIR || ".worktrees",
+    branchPrefix: process.env.WORKFLOW_BRANCH_PREFIX || "jarvis",
+    validationCommands: (process.env.WORKFLOW_VALIDATION_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
+    autoCleanupWorktree: process.env.WORKFLOW_AUTO_CLEANUP_WORKTREE !== "false",
+  },
+  codeReview: {
+    enabled: process.env.CODE_REVIEW_ENABLED === "true",
+    times: (process.env.CODE_REVIEW_TIMES || "14:00").split(",").map(s => s.trim()).filter(Boolean),
+    maxBacklogFiles: parseInt(process.env.CODE_REVIEW_MAX_BACKLOG_FILES || "3", 10),
   },
 } as const;

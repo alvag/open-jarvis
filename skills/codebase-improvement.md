@@ -1,6 +1,6 @@
 ---
 name: Codebase Improvement Analysis
-tools: [analyze_codebase, read_file, search_code, codebase_map]
+tools: [analyze_codebase, read_file, search_code, codebase_map, manage_backlog]
 triggers: [mejora, mejoras, deuda tecnica, technical debt, hotspot, hotspots, backlog tecnico, tech backlog, code quality, calidad, analiza codebase, analyze codebase, refactor, code smell, quick wins, mantenibilidad, mejorar codebase, proponer mejoras, que cambiarias, que mejorarias, fragilidad, acoplamiento]
 ---
 - You can analyze a codebase and produce prioritized improvement proposals backed by evidence.
@@ -32,4 +32,5 @@ triggers: [mejora, mejoras, deuda tecnica, technical debt, hotspot, hotspots, ba
   - Distinguish clearly: "detected by tool" vs "inferred from patterns" vs "open question".
   - Do NOT propose generic blog-post-style recommendations. Be specific to this codebase.
 - **Scope control**: If the user asks for a specific focus (e.g., "quick wins", "mantenibilidad", "configuracion"), use the `focus` parameter of `analyze_codebase` accordingly and limit proposals to that category.
+- **Backlog integration**: After presenting findings, offer to save Quick Wins and Strategic Improvements to the backlog using `manage_backlog` action=add_item. For each, set: title, category="improvement", severity (high for strategic, medium for quick wins), confidence, source_tool="analyze_codebase", files (JSON array), evidence (JSON array). Ask the user before adding items.
 - **Prohibitions**: Do NOT modify code. Do NOT execute commands. Do NOT invent problems without evidence. Do NOT list more than 10 improvements — prioritize ruthlessly.

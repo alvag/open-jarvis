@@ -267,4 +267,54 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 8");
   }
+
+  if (currentVersion < 9) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS backlog_items (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id         TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        description     TEXT NOT NULL DEFAULT '',
+        category        TEXT NOT NULL CHECK (category IN ('bug','refactor','improvement')),
+        severity        TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('critical','high','medium','low')),
+        confidence      TEXT NOT NULL DEFAULT 'medium' CHECK (confidence IN ('high','medium','low')),
+        status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','pr_created','merged','dismissed')),
+        source_tool     TEXT,
+        source_finding_id TEXT,
+        files           TEXT NOT NULL DEFAULT '[]',
+        evidence        TEXT NOT NULL DEFAULT '[]',
+        pr_number       INTEGER,
+        pr_url          TEXT,
+        branch_name     TEXT,
+        worktree_path   TEXT,
+        dismiss_reason  TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_backlog_user_status ON backlog_items(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_backlog_severity ON backlog_items(severity);
+    `);
+    db.pragma("user_version = 9");
+  }
+
+  if (currentVersion < 10) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS code_review_log (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path        TEXT NOT NULL UNIQUE,
+        last_reviewed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_file_hash   TEXT,
+        last_modified_at TEXT,
+        findings_count   INTEGER NOT NULL DEFAULT 0,
+        skills_run       TEXT NOT NULL DEFAULT '[]',
+        created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_code_review_log_path ON code_review_log(file_path);
+      CREATE INDEX IF NOT EXISTS idx_code_review_log_reviewed ON code_review_log(last_reviewed_at);
+    `);
+    db.pragma("user_version = 10");
+  }
 }

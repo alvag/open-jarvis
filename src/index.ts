@@ -38,6 +38,10 @@ import { createCodebaseMapTool } from "./tools/built-in/codebase-map.js";
 import { createAnalyzeCodebaseTool } from "./tools/built-in/analyze-codebase.js";
 import { createFindRefactorCandidatesTool } from "./tools/built-in/find-refactor-candidates.js";
 import { createDetectBugsTool } from "./tools/built-in/detect-bugs.js";
+import { createManageBacklogTool } from "./tools/built-in/manage-backlog.js";
+import { createManageCodeReviewLogTool } from "./tools/built-in/manage-code-review-log.js";
+import { createGitWorktreeTool } from "./tools/built-in/git-worktree.js";
+import { createGithubPrsTool } from "./tools/built-in/github-prs.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
@@ -164,6 +168,21 @@ async function main() {
     toolRegistry.register(createFindRefactorCandidatesTool(config.codebase));
     toolRegistry.register(createDetectBugsTool(config.codebase));
     log.info("Codebase analysis tools enabled");
+
+    // Backlog management (always available when codebase is enabled)
+    toolRegistry.register(createManageBacklogTool(db));
+    log.info("Backlog management tool enabled");
+
+    // Code review log (tracks proactive review progress)
+    toolRegistry.register(createManageCodeReviewLogTool(db));
+    log.info("Code review log tool enabled");
+  }
+
+  // Workflow tools (worktree + GitHub PRs)
+  if (config.workflow.enabled && config.codebase.enabled) {
+    toolRegistry.register(createGitWorktreeTool(config.codebase));
+    toolRegistry.register(createGithubPrsTool(config.codebase.root));
+    log.info("Workflow tools enabled (git worktree + GitHub PRs)");
   }
 
   // Shell execution tool (always registered — security handled inside the tool)
@@ -341,6 +360,26 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
           timezone: config.scheduler.timezone,
         });
         log.info({ intervalMinutes: interval }, "Seeded PR monitor task");
+      }
+    }
+
+    // Proactive code review — seed if not already in DB
+    if (config.codeReview.enabled && config.codebase.enabled) {
+      const existing = listTasks(firstUserId).find(t => t.type === "code-review");
+      if (!existing) {
+        for (const time of config.codeReview.times) {
+          const [hours, minutes] = time.split(":").map(Number);
+          const cronExpr = `${minutes} ${hours} * * *`;
+          createTask({
+            userId: firstUserId,
+            name: `Proactive Code Review (${time})`,
+            type: "code-review",
+            cronExpression: cronExpr,
+            prompt: "Run proactive code review",
+            timezone: config.scheduler.timezone,
+          });
+          log.info({ time, timezone: config.scheduler.timezone }, "Seeded proactive code review task");
+        }
       }
     }
   }
