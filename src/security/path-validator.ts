@@ -99,7 +99,7 @@ export function validatePath(
  * Simple glob-to-match: supports * as wildcard.
  * Examples: "node_modules" matches exactly, "*.db" matches any .db file.
  */
-function matchesPattern(segment: string, pattern: string): boolean {
+export function matchesPattern(segment: string, pattern: string): boolean {
   if (pattern === segment) return true;
 
   // Convert glob pattern to regex: * → .*, escape the rest
