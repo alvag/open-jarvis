@@ -113,7 +113,11 @@ function truncateDiff(rawDiff: string, maxLines: number): TruncateResult {
       continue;
     }
 
-    if (bodyBudget <= 0) continue;
+    if (bodyBudget <= 0) {
+      result.push(`... [truncated: ${section.lines.length} lines omitted]`);
+      includedLines++;
+      continue;
+    }
 
     const visibleBodyLines = Math.max(0, bodyBudget - 1);
     if (visibleBodyLines > 0) {
