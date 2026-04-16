@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-04-16
+
+### Fixed
+- **Eliminated unnecessary Telegram approval prompts** for scheduled tasks and common read-only inspection commands.
+  - Expanded `SAFE_COMMANDS` in `src/security/command-classifier.ts` with genuinely read-only utilities that the agent frequently uses while self-inspecting files: hash/checksum (`shasum`, `sha256sum`, `sha1sum`, `md5`, `md5sum`, `cksum`), path utilities (`basename`, `dirname`, `realpath`, `readlink`), env/comparison/binary-read tools (`printenv`, `cmp`, `comm`, `od`, `hexdump`), and pure utilities (`seq`, `true`, `false`). `DANGEROUS_FLAGS` guardrails remain in place so edit-enabling flags still escalate to "risky". `tree`, `diff`, and `xxd` are deliberately NOT included because they can write files via `-o`/`--output`/`-r <out>` flags that `DANGEROUS_FLAGS` does not catch.
+  - Wired up the previously-dead `scheduled_tasks.pre_approved` DB column end-to-end: the scheduler now propagates it via a new `AgentContext.preApproved` field, and `execute_command` bypasses the approval gate (but **not** blocked-command enforcement) when the context is pre-approved. Logs the bypass with command/userId/channelId for auditability.
+  - Proactive code-review cron task is now seeded with `pre_approved` set to `CODE_REVIEW_AUTO_APPROVE` (default `true`). Existing code-review rows are bidirectionally synced to the current config value on every startup, so flipping `CODE_REVIEW_AUTO_APPROVE=false` re-enables the approval gate even for legacy tasks.
+
+### Added
+- Config option `CODE_REVIEW_AUTO_APPROVE` (default `true`) and matching `config.codeReview.autoApprove`.
+
 ## [1.15.0] - 2026-04-14
 
 ### Added

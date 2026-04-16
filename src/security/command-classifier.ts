@@ -50,6 +50,7 @@ const BLOCKED_REASONS: string[] = [
  * Only the basename is matched (so /bin/ls → ls).
  */
 const SAFE_COMMANDS = new Set([
+  // Listing / navigation / identity
   "ls",
   "cat",
   "git",
@@ -80,6 +81,34 @@ const SAFE_COMMANDS = new Set([
   "uniq",
   "cut",
   "tr",
+  // Hash / checksum (read-only)
+  "shasum",
+  "sha256sum",
+  "sha1sum",
+  "md5",
+  "md5sum",
+  "cksum",
+  // Path utilities (no FS mutation)
+  "basename",
+  "dirname",
+  "realpath",
+  "readlink",
+  // Env inspection
+  "printenv",
+  // Read-only comparison
+  //   Note: `diff` is excluded because `diff --output=FILE` and `diff -o FILE`
+  //   write to disk. `cmp` and `comm` only print to stdout.
+  "cmp",
+  "comm",
+  // Binary / hex read
+  //   Note: `xxd` is excluded because `xxd -r hex.txt out.bin` writes a binary
+  //   file. `od` and `hexdump` print to stdout.
+  "od",
+  "hexdump",
+  // Pure utilities
+  "seq",
+  "true",
+  "false",
 ]);
 
 /**

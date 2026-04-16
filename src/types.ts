@@ -25,6 +25,12 @@ export interface AgentContext {
   userMessage: string;
   attachments?: { filePath: string; fileName: string }[];
   hasMcpTools?: boolean;
+  /**
+   * When true, tools that normally require user approval (risky shell commands)
+   * will execute directly without sending an approval request. Used for
+   * scheduled tasks marked pre_approved. "Blocked" commands still never run.
+   */
+  preApproved?: boolean;
 }
 
 export interface AgentResponse {

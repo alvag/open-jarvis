@@ -92,6 +92,17 @@ export function createExecuteCommandTool(deps: ApprovalDeps): Tool {
       };
     }
 
+    // Pre-approved context (e.g. scheduled tasks flagged with pre_approved=1)
+    // bypasses the approval gate for risky commands. "blocked" commands still
+    // never run — security is preserved for lethal operations.
+    if (classification === "risky" && context.preApproved) {
+      log.warn(
+        { command, args: argList, userId: context.userId, channelId: context.channelId },
+        "Risky command auto-executed (pre-approved context)",
+      );
+      return executeAndFormat(command, argList, cwd);
+    }
+
     // Handle risky commands — non-blocking approval
     // Grammy processes updates sequentially, so we can't block the handler
     // waiting for the callback_query (approve/deny button). Instead, we send

@@ -382,8 +382,8 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
 
     // Proactive code review — seed if not already in DB
     if (config.codeReview.enabled && config.codebase.enabled) {
-      const existing = listTasks(firstUserId).find(t => t.type === "code-review");
-      if (!existing) {
+      const existingReviews = listTasks(firstUserId).filter(t => t.type === "code-review");
+      if (existingReviews.length === 0) {
         for (const time of config.codeReview.times) {
           const [hours, minutes] = time.split(":").map(Number);
           const cronExpr = `${minutes} ${hours} * * *`;
@@ -394,8 +394,30 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
             cronExpression: cronExpr,
             prompt: "Run proactive code review",
             timezone: config.scheduler.timezone,
+            preApproved: config.codeReview.autoApprove,
           });
-          log.info({ time, timezone: config.scheduler.timezone }, "Seeded proactive code review task");
+          log.info(
+            { time, timezone: config.scheduler.timezone, preApproved: config.codeReview.autoApprove },
+            "Seeded proactive code review task",
+          );
+        }
+      } else {
+        // Sync pre_approved on every code-review task to the current config value.
+        // Config is the source of truth: flipping CODE_REVIEW_AUTO_APPROVE to false
+        // must re-enable the approval gate on already-seeded tasks.
+        const targetValue = config.codeReview.autoApprove ? 1 : 0;
+        const sync = db.prepare(
+          "UPDATE scheduled_tasks SET pre_approved = ?, updated_at = datetime('now') WHERE id = ?",
+        );
+        for (const task of existingReviews) {
+          const current = task.pre_approved ? 1 : 0;
+          if (current !== targetValue) {
+            sync.run(targetValue, task.id);
+            log.info(
+              { taskId: task.id, taskName: task.name, from: current, to: targetValue },
+              "Synced code-review pre_approved to CODE_REVIEW_AUTO_APPROVE",
+            );
+          }
         }
       }
     }

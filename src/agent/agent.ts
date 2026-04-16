@@ -114,7 +114,12 @@ export async function runAgent(
       const result = await toolRegistry.execute(
         toolCall.function.name,
         args,
-        { userId: context.userId, sessionId: context.sessionId },
+        {
+          userId: context.userId,
+          sessionId: context.sessionId,
+          channelId: context.channelId,
+          preApproved: context.preApproved,
+        },
       );
 
       const toolMessage: ChatMessage = {

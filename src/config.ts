@@ -126,5 +126,6 @@ export const config = {
     enabled: process.env.CODE_REVIEW_ENABLED === "true",
     times: (process.env.CODE_REVIEW_TIMES || "14:00").split(",").map(s => s.trim()).filter(Boolean),
     maxBacklogFiles: parseInt(process.env.CODE_REVIEW_MAX_BACKLOG_FILES || "3", 10),
+    autoApprove: process.env.CODE_REVIEW_AUTO_APPROVE !== "false",
   },
 } as const;
