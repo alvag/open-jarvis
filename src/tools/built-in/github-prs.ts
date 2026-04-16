@@ -1,10 +1,13 @@
+import type Database from "better-sqlite3";
 import type { Tool, ToolResult } from "../tool-types.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createLogger } from "../../logger.js";
 
 const execFileAsync = promisify(execFile);
+const log = createLogger("github_prs");
 
-export function createGithubPrsTool(codebaseRoot?: string): Tool {
+export function createGithubPrsTool(codebaseRoot?: string, db?: Database.Database): Tool {
   const repoDir = codebaseRoot || process.cwd();
   let ghAvailable: boolean | null = null;
 
@@ -63,7 +66,7 @@ export function createGithubPrsTool(codebaseRoot?: string): Tool {
     definition: {
       name: "github_prs",
       description:
-        "Interact with GitHub Pull Requests via the gh CLI. Can list PRs, get PR details, create PRs, and check PR status.",
+        "Interact with GitHub Pull Requests via the gh CLI. Can list PRs, get PR details, create PRs, and check PR status. When creating a PR that corresponds to a backlog item, ALWAYS pass backlog_item_id so the link is recorded atomically (pr_number, pr_url, status='pr_created'). Without this link, the automatic worktree cleanup after MERGED/CLOSED cannot find the worktree.",
       parameters: {
         type: "object",
         properties: {
@@ -107,12 +110,17 @@ export function createGithubPrsTool(codebaseRoot?: string): Tool {
               "Whether to create the PR as a draft (for create_pr action)",
             enum: ["true", "false"],
           },
+          backlog_item_id: {
+            type: "string",
+            description:
+              "Optional backlog item ID (number as string) to link the PR with. When provided, create_pr auto-updates the backlog item's pr_number, pr_url, and status to 'pr_created' so later cleanup can find the worktree.",
+          },
         },
         required: ["action"],
       },
     },
 
-    async execute(args): Promise<ToolResult> {
+    async execute(args, context): Promise<ToolResult> {
       const action = args.action as string;
 
       const ghCheck = await checkGhAvailable();
@@ -206,6 +214,30 @@ export function createGithubPrsTool(codebaseRoot?: string): Tool {
             const numberMatch = url.match(/\/pull\/(\d+)/);
             const number = numberMatch ? parseInt(numberMatch[1], 10) : null;
 
+            // Auto-link backlog item if provided. Scoped by user_id to prevent
+            // one user from hijacking another's backlog row.
+            const backlogItemRaw = args.backlog_item_id as string | undefined;
+            let backlogLinked: number | null = null;
+            if (backlogItemRaw && db && number !== null) {
+              const backlogId = parseInt(backlogItemRaw, 10);
+              if (!Number.isNaN(backlogId)) {
+                const result = db
+                  .prepare(
+                    "UPDATE backlog_items SET pr_number = ?, pr_url = ?, status = 'pr_created', updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+                  )
+                  .run(number, url, backlogId, context.userId);
+                if (result.changes > 0) {
+                  backlogLinked = backlogId;
+                  log.info({ backlogId, prNumber: number, prUrl: url, userId: context.userId }, "Linked PR to backlog item");
+                } else {
+                  log.warn(
+                    { backlogId, userId: context.userId },
+                    "backlog_item_id provided but no matching row owned by user was updated",
+                  );
+                }
+              }
+            }
+
             return {
               success: true,
               data: {
@@ -214,6 +246,7 @@ export function createGithubPrsTool(codebaseRoot?: string): Tool {
                 title,
                 source_branch: sourceBranch,
                 destination_branch: destinationBranch,
+                backlog_item_id: backlogLinked,
               },
             };
           }
