@@ -235,6 +235,7 @@ function startBot(): void {
         );
       }
       needsNpmInstall = false;
+      updateInProgress = false;
       backoff = 1000;
       startBot();
       return;
