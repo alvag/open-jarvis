@@ -198,7 +198,7 @@ async function main() {
   // Workflow tools (worktree + GitHub PRs)
   if (config.workflow.enabled && config.codebase.enabled) {
     toolRegistry.register(createGitWorktreeTool(config.codebase));
-    toolRegistry.register(createGithubPrsTool(config.codebase.root));
+    toolRegistry.register(createGithubPrsTool(config.codebase.root, db));
     log.info("Workflow tools enabled (git worktree + GitHub PRs)");
   }
 
@@ -377,6 +377,24 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
           timezone: config.scheduler.timezone,
         });
         log.info({ intervalMinutes: interval }, "Seeded PR monitor task");
+      }
+    }
+
+    // GitHub PR monitor — cleanup worktrees + rename branches after MERGED/CLOSED
+    if (config.workflow.enabled && config.codebase.enabled) {
+      const existing = listTasks(firstUserId).find(t => t.type === "github-pr-monitor");
+      if (!existing) {
+        const interval = config.workflow.prPollIntervalMinutes;
+        const cronExpr = `*/${interval} * * * *`;
+        createTask({
+          userId: firstUserId,
+          name: "GitHub PR Monitor",
+          type: "github-pr-monitor",
+          cronExpression: cronExpr,
+          prompt: "Poll GitHub PRs tracked in backlog, clean up worktrees/branches after MERGED or CLOSED.",
+          timezone: config.scheduler.timezone,
+        });
+        log.info({ intervalMinutes: interval }, "Seeded GitHub PR monitor task");
       }
     }
 

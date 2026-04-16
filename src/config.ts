@@ -120,6 +120,7 @@ export const config = {
     branchPrefix: process.env.WORKFLOW_BRANCH_PREFIX || "jarvis",
     validationCommands: (process.env.WORKFLOW_VALIDATION_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
     autoCleanupWorktree: process.env.WORKFLOW_AUTO_CLEANUP_WORKTREE !== "false",
+    prPollIntervalMinutes: parseInt(process.env.WORKFLOW_PR_POLL_INTERVAL_MINUTES || "10", 10),
   },
   extraSafeCommands: (process.env.EXTRA_SAFE_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
   codeReview: {

@@ -125,6 +125,10 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
     } else if (fresh.type === "pr-monitor") {
       const { checkPRChanges } = await import("./pr-monitor.js");
       await checkPRChanges(deps.db, deps.sendMessage, fresh.user_id);
+    } else if (fresh.type === "github-pr-monitor") {
+      const { checkGithubPRChanges } = await import("./github-pr-monitor.js");
+      const { config } = await import("../config.js");
+      await checkGithubPRChanges(deps.db, deps.sendMessage, fresh.user_id, config.codebase.root);
     } else if (fresh.type === "consolidation") {
       const { buildConsolidationPrompt } = await import("./consolidation.js");
       const dynamicPrompt = buildConsolidationPrompt(deps.memoryManager, fresh.user_id);

@@ -4,6 +4,19 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-04-16
+
+### Added
+- **Automatic worktree + branch cleanup after GitHub PR MERGED/CLOSED**: closes the worktree lifecycle loop that previously left orphan `.worktrees/<slug>` directories and unmerged `jarvis/*` local branches.
+  - New scheduler task `github-pr-monitor` (`src/scheduler/github-pr-monitor.ts`) polls every `WORKFLOW_PR_POLL_INTERVAL_MINUTES` (default 10) for any `backlog_items` row with `status='pr_created' AND pr_number IS NOT NULL`. Uses `gh pr view --json state,mergedAt,closedAt` to detect transitions.
+  - On **MERGED**: backlog status → `merged`, worktree removed via `git worktree remove`, local branch deleted with `git branch -D`, Telegram notification sent.
+  - On **CLOSED** without merge: backlog status → `dismissed`, same cleanup and notification.
+  - Uncommitted changes in the worktree are detected via `git status --porcelain` and the remove is skipped (backlog still transitions). Missing worktrees and already-deleted branches are tolerated.
+  - Honors `WORKFLOW_AUTO_CLEANUP_WORKTREE`: when false, backlog status still transitions but the worktree is preserved.
+  - Seeded automatically at startup when `WORKFLOW_ENABLED=true && CODEBASE_ENABLED=true`.
+- **Auto-link backlog item ↔ GitHub PR**: `github_prs` tool's `create_pr` action now accepts an optional `backlog_item_id` parameter. When provided, the tool updates the backlog row's `pr_number`, `pr_url`, and `status='pr_created'` automatically so the monitor above can find the worktree later. Without this link the cleanup cannot happen.
+- Config `WORKFLOW_PR_POLL_INTERVAL_MINUTES` and matching `config.workflow.prPollIntervalMinutes`.
+
 ## [1.15.1] - 2026-04-16
 
 ### Fixed
