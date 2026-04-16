@@ -9,6 +9,7 @@ const STABLE_THRESHOLD = 30_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const GIT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 const SUPERVISOR_LOG = "./data/supervisor.log";
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -74,8 +75,31 @@ let lastStartTime = 0;
 let pendingAutoUpdate = false;
 let needsNpmInstall = false;
 let updateInProgress = false;
+let updateRetryBlockedUntil = 0;
 let heartbeatDeadline: ReturnType<typeof setTimeout> | null = null;
 let gitPollInterval: ReturnType<typeof setInterval> | null = null;
+
+function changedFilesRequireInstall(changedFiles: string): boolean {
+  const changed = changedFiles.split("\n");
+  return changed.includes("package.json") || changed.includes("package-lock.json");
+}
+
+function restoreGeneratedLockfile(): void {
+  try {
+    execSync("git restore package-lock.json", { stdio: "pipe" });
+  } catch {
+    // Ignore if the file does not exist or is not tracked in this repo.
+  }
+}
+
+function setUpdateRetryCooldown(reason: string): void {
+  updateRetryBlockedUntil = Date.now() + UPDATE_RETRY_COOLDOWN_MS;
+  updateInProgress = false;
+  autoupdateLog.warn(
+    { retryBlockedUntil: new Date(updateRetryBlockedUntil).toISOString(), reason },
+    "Auto-update retries paused after failure",
+  );
+}
 
 // --- Heartbeat watchdog (SUP-02) ---
 
@@ -93,6 +117,7 @@ function resetHeartbeatWatchdog(child: ChildProcess): void {
 function pollForUpdates(child: ChildProcess): void {
   try {
     if (updateInProgress) return;
+    if (Date.now() < updateRetryBlockedUntil) return;
 
     execSync("git fetch", { stdio: "pipe" });
 
@@ -114,7 +139,7 @@ function pollForUpdates(child: ChildProcess): void {
         `git diff --name-only ${localHead} ${remoteHead}`,
         { encoding: "utf8" },
       );
-      needsNpmInstall = changedFiles.split("\n").includes("package.json");
+      needsNpmInstall = changedFilesRequireInstall(changedFiles);
       pendingAutoUpdate = true;
 
       if (gitPollInterval) {
@@ -187,23 +212,29 @@ function startBot(): void {
       pendingAutoUpdate = false;
       autoupdateLog.info("Applying git pull...");
       try {
+        restoreGeneratedLockfile();
         execSync("git pull", { stdio: "inherit" });
         if (needsNpmInstall) {
-          autoupdateLog.info("package.json changed — running npm install");
-          execSync("npm install", { stdio: "inherit" });
+          autoupdateLog.info("package manifest changed — running npm ci");
+          execSync("npm ci", { stdio: "inherit" });
         }
         const newHead = execSync("git rev-parse HEAD", {
           encoding: "utf8",
         }).trim();
+        updateRetryBlockedUntil = 0;
         autoupdateLog.info(`Update complete. New commit: ${newHead.slice(0, 8)}`);
         void notifyTelegram(
           `Actualización aplicada. Reiniciando con commit ${newHead.slice(0, 8)}...`,
         );
       } catch (err) {
-        autoupdateLog.warn({ error: (err as Error).message }, "git pull failed during auto-update");
+        const message = (err as Error).message;
+        setUpdateRetryCooldown(message);
+        autoupdateLog.warn({ error: message }, "git pull failed during auto-update");
+        void notifyTelegram(
+          "Falló la actualización automática. Pausé los reintentos por 15 minutos para evitar un bucle de reinicios.",
+        );
       }
       needsNpmInstall = false;
-      updateInProgress = false;
       backoff = 1000;
       startBot();
       return;
@@ -228,6 +259,7 @@ function startBot(): void {
           const localHead = execSync("git rev-parse HEAD", {
             encoding: "utf8",
           }).trim();
+          restoreGeneratedLockfile();
           execSync("git pull", { stdio: "inherit" });
           const newHead = execSync("git rev-parse HEAD", {
             encoding: "utf8",
@@ -237,13 +269,20 @@ function startBot(): void {
               `git diff --name-only ${localHead} ${newHead}`,
               { encoding: "utf8" },
             );
-            if (changedFiles.split("\n").includes("package.json")) {
-              supLog.info("package.json changed — running npm install");
-              execSync("npm install", { stdio: "inherit" });
+            if (changedFilesRequireInstall(changedFiles)) {
+              supLog.info("package manifest changed — running npm ci");
+              execSync("npm ci", { stdio: "inherit" });
             }
           }
+          updateRetryBlockedUntil = 0;
+          updateInProgress = false;
         } catch (err) {
-          supLog.warn({ error: (err as Error).message }, "git pull failed, restarting with existing code");
+          const message = (err as Error).message;
+          setUpdateRetryCooldown(message);
+          void notifyTelegram(
+            "Falló /update. Reinicié con el código actual y pausaré los reintentos automáticos por 15 minutos para evitar un bucle.",
+          );
+          supLog.warn({ error: message }, "git pull failed, restarting with existing code");
         }
         backoff = 1000;
         startBot();
