@@ -124,7 +124,14 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
       await deps.sendMessage(fresh.user_id, `🔔 Recordatorio: ${fresh.prompt}`);
     } else if (fresh.type === "pr-monitor") {
       const { checkPRChanges } = await import("./pr-monitor.js");
-      await checkPRChanges(deps.db, deps.sendMessage, fresh.user_id);
+      await checkPRChanges(deps.db, deps.sendMessage, fresh.user_id, {
+        runAgent: deps.runAgent,
+        llm: deps.llm,
+        toolRegistry: deps.toolRegistry,
+        memoryManager: deps.memoryManager,
+        soul: deps.soul,
+        maxIterations: deps.maxIterations,
+      });
     } else if (fresh.type === "github-pr-monitor") {
       const { checkGithubPRChanges } = await import("./github-pr-monitor.js");
       const { config } = await import("../config.js");

@@ -4,6 +4,27 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-04-17
+
+### Added
+- **Auto code-review en `pr-monitor` cuando soy reviewer**: el monitor de PRs de Bitbucket ahora dispara un code review automático vía LLM en tres escenarios — (1) primera vez que ve un PR donde soy reviewer, (2) me agregan como reviewer a un PR ya trackeado, (3) hay nuevos commits sobre un PR donde ya soy reviewer (re-review incremental). El review sale por Telegram usando el patrón `runAgent` igual que `consolidation` y `code-review`.
+  - Nuevo módulo `src/scheduler/pr-review-prompt.ts` con `buildBitbucketPrReviewPrompt(pr, diff, isRereview)`. Trunca el diff a 25k chars y el prompt total a 30k. Instrucciones al agente: resumen, hallazgos con severidad/archivo/línea, recomendación (aprobar / pedir cambios / comentar sin bloquear).
+  - `pr_states.participant_states` pasa de ser un blob pass-through a un JSON tipado `{ reviewers: string[], last_reviewed_on: string | null, my_comment_ids: number[] }`. Sin cambios de esquema — se reutiliza la columna existente con fallback seguro para filas viejas.
+  - Persistencia de estado ocurre **antes** de invocar `runAgent` → previene dobles reviews si el proceso crashea.
+  - Re-review solo cuando `last_reviewed_on !== pr.updated_on` y se detectan commit updates nuevos (mismo criterio de detección que la notificación de commits).
+- **Detección de respuestas directas a mis comentarios**: cuando la actividad del PR incluye items de tipo comment y el PR fue actualizado, se hace fetch de `getPRComments` para encontrar replies donde `parent.id ∈ my_comment_ids` y el autor es distinto de mí. La notificación agrega la línea `💬 N respuesta(s) a tus comentarios por <authors>`. Cubre replies silenciosos que no usan `@mención` y que antes quedaban invisibles.
+
+### Changed
+- `checkPRChanges` ahora requiere un cuarto parámetro `agentDeps` con `runAgent`, `llm`, `toolRegistry`, `memoryManager`, `soul`, `maxIterations`. `scheduler-manager.ts` se actualiza para pasar el subset de `SchedulerDeps`.
+- `buildNotification` acepta un nuevo parámetro `replies: BitbucketComment[]` para emitir la línea de respuestas silenciosas.
+
+### Fixed
+- **Entrega explícita del review por Telegram**: el scheduler no reenvía `AgentResponse.text` automáticamente. `runPrReview` ahora captura el texto devuelto por `runAgent` y lo entrega via `sendMessage`. El prompt se ajustó para reflejar esto (el agente produce el texto; el orquestador lo envía).
+- **Replies no se pierden cuando dispara re-review**: la detección de respuestas a comentarios propios se ejecuta ANTES de la decisión review-vs-notification. Si en el mismo update hay replies + commits, se envía primero una notificación breve de replies y luego el review. Antes se perdían silenciosamente por el `continue` del flujo de review.
+- **`my_comment_ids` sobrevive paginación**: `getPRComments` solo devuelve la primera página. Los ids detectados en cada corrida se mergean con los previos (`[...new Set([...prev, ...current])]`) en lugar de sobrescribir, para no perder tracking en PRs con muchos comentarios.
+- **Retry-on-failure del review**: la persistencia de `last_reviewed_on` y demás estado se movió a DESPUÉS del review exitoso. Si `runAgent`, el fetch del diff o el `sendMessage` fallan transitoriamente, no se marca el PR como revisado y la próxima corrida reintenta. Tradeoff aceptado: ventana pequeña de posible doble-review si el proceso crashea entre delivery y DB write.
+- **Seed de `my_comment_ids` en primera vista**: al ver un PR por primera vez (tanto en path de review como baseline), se hace fetch de `getPRComments` para sembrar los ids de mis comentarios preexistentes. Antes se persistía `[]` y perdíamos la posibilidad de detectar replies a comentarios anteriores al monitor.
+
 ## [1.21.0] - 2026-04-17
 
 ### Added
