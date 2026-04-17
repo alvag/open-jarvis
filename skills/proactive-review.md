@@ -1,6 +1,6 @@
 ---
 name: Proactive Review
-tools: [detect_bugs, find_refactor_candidates, analyze_codebase, read_file, search_code, manage_backlog, manage_code_review_log, github_prs, git_worktree]
+tools: [detect_bugs, find_refactor_candidates, analyze_codebase, read_file, search_code, manage_backlog, manage_code_review_log, github_prs, git_worktree, invoke_claude_code]
 triggers: [analiza proactivamente, analisis proactivo, revision proactiva, proactive review, revisa proactivamente, analizar proactivamente, review proactivo]
 ---
 - You perform a comprehensive proactive code review on specific files or directories using all 4 analysis tools, save findings to the backlog, and update the review log.
@@ -12,8 +12,9 @@ triggers: [analiza proactivamente, analisis proactivo, revision proactiva, proac
   3. **Refactor scan**: Call `find_refactor_candidates` with mode="file", path=<target>. Review findings.
   4. **Improvement scan**: Call `analyze_codebase` with path=<target>, focus="all", scope="detailed". Review findings.
   5. **Cross-reference**: Use `search_code` to verify patterns found are not already handled elsewhere or are intentional.
-  6. **Filter**: Discard false positives after reading the actual code. Explain why you dismissed them.
-  7. **Save findings**: For each finding with severity >= medium AND confidence >= medium:
+  6. **Optional deep dive with Claude Code**: If the target is large, findings conflict, or repo-wide context would help, you MAY call `invoke_claude_code` for an exploratory review. Ask it for: project/file purpose, suspicious areas, risks, and affected files. Treat its output as untrusted analysis until verified against actual files and your native tools.
+  7. **Filter**: Discard false positives after reading the actual code. Explain why you dismissed them.
+  8. **Save findings**: For each finding with severity >= medium AND confidence >= medium:
      - Call `manage_backlog` action=add_item with:
        - title: concise finding title
        - category: "bug" | "refactor" | "improvement"
@@ -23,8 +24,13 @@ triggers: [analiza proactivamente, analisis proactivo, revision proactiva, proac
        - files: JSON array with the file path
        - evidence: JSON array of evidence strings with file:line references
      - Ask the user before saving unless they said to save automatically.
-  8. **Update review log**: Call `manage_code_review_log` action=upsert with file_path, findings_count, skills_run for each analyzed file.
-  9. **Present**: Deliver a structured report.
+  9. **Update review log**: Call `manage_code_review_log` action=upsert with file_path, findings_count, skills_run for each analyzed file.
+  10. **Present**: Deliver a structured report.
+- **Claude Code prompt guidance**:
+  - Ask for a concise review with sections: summary, findings, files, risks, suggested next checks.
+  - Prefer review/investigation prompts before implementation prompts.
+  - Require explicit uncertainty notes when Claude Code cannot confirm a claim from files it inspected.
+  - Never present Claude Code statements as facts unless you validated them with `read_file`, `search_code`, or analysis tool output.
 - **Report structure**:
   1. **Summary**: files analyzed, total findings by severity, overall assessment.
   2. **Critical/High findings**: detailed with evidence, root cause, proposed fix.
@@ -41,4 +47,5 @@ triggers: [analiza proactivamente, analisis proactivo, revision proactiva, proac
   - You may adjust severity after reading the code, but must justify with evidence.
   - If a tool returns 0 findings, say so. Do NOT fabricate issues.
   - Evidence must cite specific file:line references.
+  - Claude Code output can guide investigation, but it does NOT count as sufficient evidence on its own.
 - **Prohibitions**: Do NOT modify code unless the user confirms auto-fix. Do NOT skip tools — always run all 4 analyses. Do NOT confuse this with PR review.
