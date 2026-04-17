@@ -11,8 +11,13 @@ triggers: [workflow, flujo de desarrollo, trabajar en backlog, pick task, tomar 
   - ALWAYS validate before creating a PR.
   - NEVER force push without explicit user confirmation.
   - ALWAYS ask user confirmation before starting work on an item.
+- **Execution style inside this workflow**:
+  - After the user confirms the item scope, proceed autonomously through worktree, implementation, validation, commit, push, and PR creation without asking for intermediate check-ins.
+  - Do NOT wait for the user to ask "ya?" or request status updates before finishing the full delivery flow.
+  - Interrupt the flow only if there is a real blocker, an ambiguity in scope, or a destructive/risky action that requires explicit confirmation.
+  - When the flow completes, report the final result with PR link, validations, files changed, and any notable caveats.
 - **Workflow** (follow these phases in order):
-  1. **Verify gh CLI**: Call `github_prs` action=list_prs. If gh is not available/authenticated, inform the user and ask if they want to work in local mode (worktree + branch + commit, no push/PR). If they accept, skip steps 9b and 9c.
+  1. **Verify gh CLI**: Call `github_prs` action=list_prs. If gh is not available/authenticated, inform the user and ask if they want to work in local mode (worktree + branch + commit, no push/PR). If they accept, skip steps 10b and 10c.
   2. **Gate Check**: From the list_prs result, filter for PRs where headRefName starts with `jarvis/`. If any open Jarvis PR exists, STOP. Report the PR to the user and do NOT start new work.
   3. **Reconcile**: Normally you can skip this — the `github-pr-monitor` scheduled task runs every 10 min and automatically transitions pr_created → merged/dismissed and removes the worktree + local branch. Only run this manually if the user reports stale state or the scheduler is disabled: call `manage_backlog` action=list_items status=pr_created, then for each item call `github_prs` action=check_status and update_item to merged/dismissed accordingly.
   4. **Select**: Call `manage_backlog` action=next_item. If the backlog is empty, suggest running `detect_bugs` or `find_refactor_candidates` to populate it.
