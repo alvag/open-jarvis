@@ -317,4 +317,31 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 10");
   }
+
+  if (currentVersion < 11) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS intent_usage (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id        TEXT NOT NULL,
+        category       TEXT NOT NULL,
+        canonical_key  TEXT NOT NULL,
+        raw_text       TEXT NOT NULL,
+        created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_intent_usage_user_key
+        ON intent_usage(user_id, canonical_key, created_at);
+
+      CREATE TABLE IF NOT EXISTS intent_suggestions (
+        user_id           TEXT NOT NULL,
+        canonical_key     TEXT NOT NULL,
+        category          TEXT NOT NULL,
+        last_suggested_at TEXT,
+        last_dismissed_at TEXT,
+        accepted_at       TEXT,
+        PRIMARY KEY (user_id, canonical_key)
+      );
+    `);
+    db.pragma("user_version = 11");
+  }
 }

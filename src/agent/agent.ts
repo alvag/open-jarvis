@@ -3,6 +3,7 @@ import type { LLMProvider } from "../llm/llm-provider.js";
 import type { ToolRegistry } from "../tools/tool-registry.js";
 import type { MemoryManager } from "../memory/memory-manager.js";
 import type { SoulContent } from "../memory/soul.js";
+import type { RepetitionDetector } from "../proactivity/repetition-detector.js";
 import { buildSystemPrompt } from "./context-builder.js";
 import { classifyComplexity } from "../llm/model-router.js";
 import { matchByMessage, matchByTool } from "../skills/skill-loader.js";
@@ -17,10 +18,24 @@ export async function runAgent(
   memoryManager: MemoryManager,
   soul: SoulContent,
   maxIterations: number,
+  repetitionDetector?: RepetitionDetector,
 ): Promise<AgentResponse> {
   const startTime = Date.now();
   const toolsUsed: string[] = [];
+  // Per-invocation outcomes in call order. Used by the repetition detector
+  // so a mixed turn like "get_items OK + add_item FAIL" is not counted as a
+  // successful action (the detector checks the LAST invocation per tool).
+  const toolOutcomes: {
+    name: string;
+    success: boolean;
+    args?: Record<string, unknown>;
+  }[] = [];
   const images: string[] = [];
+
+  // Extract repetitive intent (classification only; recording happens in handleTurn
+  // when we know whether a relevant tool actually ran)
+  const trackedIntent =
+    repetitionDetector?.extract(context.userMessage) ?? null;
 
   // Proactive skill matching: load skills relevant to the user's message
   const messageSkills = matchByMessage(context.userMessage);
@@ -90,17 +105,43 @@ export async function runAgent(
     }
 
     messages.push(response);
-    memoryManager.saveSessionMessage(context.sessionId, response);
 
     // No tool calls — we have the final answer
     if (!response.tool_calls || response.tool_calls.length === 0) {
       log.info({ userId: context.userId, durationMs: Date.now() - startTime, toolsUsed, iterations: i + 1, totalPromptTokens, totalCompletionTokens, totalTokens: totalPromptTokens + totalCompletionTokens }, "response complete");
+
+      let finalText = response.content || "I have nothing to say.";
+      if (repetitionDetector) {
+        const decision = repetitionDetector.handleTurn({
+          userId: context.userId,
+          sessionId: context.sessionId,
+          userText: context.userMessage,
+          intent: trackedIntent,
+          toolOutcomes,
+        });
+        if (decision.shouldSuggest && decision.message) {
+          finalText = `${finalText}${decision.message}`;
+        }
+      }
+
+      // Persist the FINAL (possibly augmented) assistant message so session
+      // history includes the suggestion suffix. Otherwise a follow-up like
+      // "sí, hazlo recurrente" has no visible antecedent in history.
+      const persisted: ChatMessage =
+        finalText === (response.content ?? "")
+          ? response
+          : { ...response, content: finalText };
+      memoryManager.saveSessionMessage(context.sessionId, persisted);
+
       return {
-        text: response.content || "I have nothing to say.",
+        text: finalText,
         toolsUsed,
         images: images.length > 0 ? images : undefined,
       };
     }
+
+    // Tool-call path: persist the raw assistant response before executing tools
+    memoryManager.saveSessionMessage(context.sessionId, response);
 
     // Execute each tool call
     for (const toolCall of response.tool_calls) {
@@ -131,6 +172,11 @@ export async function runAgent(
       messages.push(toolMessage);
       memoryManager.saveSessionMessage(context.sessionId, toolMessage);
       toolsUsed.push(toolCall.function.name);
+      toolOutcomes.push({
+        name: toolCall.function.name,
+        success: result.success,
+        args,
+      });
 
       // Reactive skill matching: inject skill for this tool if not already loaded
       const toolSkills = matchByTool(toolCall.function.name).filter(
