@@ -26,10 +26,11 @@ triggers: [workflow, flujo de desarrollo, trabajar en backlog, pick task, tomar 
   7. **Implement**:
      - Read the affected files using `read_file` with line ranges from the evidence.
      - Use `search_code` to confirm surrounding usages and constraints before editing.
-     - For non-trivial work, you MAY delegate inside the worktree with `invoke_claude_code` to investigate or implement, but only after you understand the target files yourself.
+     - For non-trivial work, you MAY delegate inside the worktree with `invoke_claude_code` (if registered — see step 8) to investigate or implement, but only after you understand the target files yourself.
      - Treat Claude Code output as advisory until you verify it against actual files and validations.
      - Keep changes minimal and focused — address only the selected backlog item.
   8. **Claude Code usage pattern** (optional, for deep work):
+     - **Availability guard**: `invoke_claude_code` is opt-in via `CLAUDE_CODE_ENABLED=true` and only appears in the tool registry when enabled. If the tool is NOT in your available tools for this turn, skip this entire step and do the implementation with native tools (`read_file`, `search_code`, `execute_command`). Do NOT mention Claude Code to the user if it's unavailable.
      - Use it when the task needs repo-wide exploration, repetitive edits, or a second-pass implementation.
      - Pass the worktree path as `working_directory`, not the main repo.
      - Use a prompt that asks for: scope, files changed, risks, validations attempted, and a concise summary.

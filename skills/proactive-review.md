@@ -13,6 +13,7 @@ triggers: [analiza proactivamente, analisis proactivo, revision proactiva, proac
   4. **Improvement scan**: Call `analyze_codebase` with path=<target>, focus="all", scope="detailed". Review findings.
   5. **Cross-reference**: Use `search_code` to verify patterns found are not already handled elsewhere or are intentional.
   6. **Optional deep dive with Claude Code**: If the target is large, findings conflict, or repo-wide context would help, you MAY call `invoke_claude_code` for an exploratory review. Ask it for: project/file purpose, suspicious areas, risks, and affected files. Treat its output as untrusted analysis until verified against actual files and your native tools.
+     - **Availability guard**: `invoke_claude_code` is opt-in via `CLAUDE_CODE_ENABLED=true` and only appears in the tool registry when enabled. If it is NOT in your available tools for this turn, skip this step silently and continue to step 7 with the native-tool findings. Do NOT mention Claude Code to the user if it's unavailable.
   7. **Filter**: Discard false positives after reading the actual code. Explain why you dismissed them.
   8. **Save findings**: For each finding with severity >= medium AND confidence >= medium:
      - Call `manage_backlog` action=add_item with:
