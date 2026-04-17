@@ -4,6 +4,25 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-04-17
+
+### Added
+- **Auto-detección de tareas repetitivas** (MVP): Jarvis ahora observa patrones en pedidos del usuario y sugiere automatizaciones sin ejecutarlas por su cuenta.
+  - Nuevo módulo `src/proactivity/` con tres archivos: `canonicalizer.ts` (extracción heurística de intent — lowercase, strip de acentos, remoción de fechas/horas/stopwords, normalización de verbos), `repetition-store.ts` (acceso DB), `repetition-detector.ts` (API pública `extract` + `handleTurn`).
+  - Migración DB #11: tablas `intent_usage` (eventos con timestamp) e `intent_suggestions` (estado de cooldown/aceptación/rechazo).
+  - Categorías detectadas en el MVP: `reminder_request` (disparadores: recuérdame, acuérdame, avísame, programar, agendar, remind me, no olvides) y `list_add` (agrega, anota, apunta, pon en, añade, add to, …). Los disparadores ambiguos `tengo que` / `hay que` se excluyen a propósito porque son marcadores de obligación conversacional (p. ej. "tengo que pagar el alquiler") y contaminarían el contador.
+  - Umbrales por defecto: **3 ocurrencias en 7 días** o **2 ocurrencias en 3 días**. Cooldown de **7 días** después de sugerir o ser rechazada. No insiste si ya fue aceptada.
+  - **Gating por acción**: `intent_usage` sólo se persiste cuando la respuesta final usó una tool relevante (`create_scheduled_task` / `manage_scheduled_task` para recordatorios, `manage_lists` para listas). Menciones conversacionales que no disparan acción no cuentan, evitando falsos positivos.
+  - **Ciclo de aceptación/rechazo cableado**: tras emitir una sugerencia, el detector guarda un `pending` por `sessionId` (TTL 10 min). En el siguiente turno, la aceptación exige que **una invocación relevante finalice con éxito** (chequeado sobre la *última* invocación del nombre de tool, no sólo su presencia) **Y** que se cumpla una de: (a) el `canonicalKey` extraído coincide con el pendiente, o (b) el texto contiene una afirmación **específica de automatización** (`recurrente`, `automatízalo`, `conviértelo`, `hazlo recurrente`) — afirmaciones genéricas tipo `sí`/`ok` por sí solas no aceptan, para evitar que un "sí" confirmando otra acción marque falsamente el pending. Si el usuario rechaza con patrones de negación (`no`, `déjalo`, `olvídalo`, `no gracias`, `no insistas`, …) → `markDismissed`. Ambos casos actualizan `intent_suggestions` y respetan el cooldown.
+  - **Canonicalización robusta con strip palabra-por-palabra**: en vez de remover frases multi-palabra contiguas (que fallan con `pon leche en compras`), se mantienen listas `REMINDER_STRIP_WORDS` y `LIST_ADD_STRIP_WORDS` de verbos individuales (`pon`, `mete`, `agrega`, `recuerdame`, …) que se eliminan antes de tokenizar. El nombre de la lista también se filtra. Resultado: `agrega leche a compras` y `pon leche en compras` colapsan en el mismo `canonicalKey`.
+  - **`extractListName` ignora cortesías**: se limita a 1-2 tokens después de `lista de`/preposición, y filtra un set de palabras de cortesía (`por`, `favor`, `porfa`, `please`, `gracias`, `plz`, `ahora`, `ya`, `si`). Así `agrega leche a la lista de compras por favor` extrae listName `compras`, no `compras por`.
+  - **Outcomes por invocación con args**: `agent.ts` mantiene `toolOutcomes: { name, success, args }[]` con una entrada por cada tool call en orden. El detector exige que la **última** invocación relevante tenga `success=true`. Para `manage_lists` el gate adicional es `args.action === "add_item"` — inspecciones (`view_list`, `get_lists`, etc.) no cuentan como un add completado, aunque la tool sea la misma.
+  - **Precedencia reminder sobre list_add**: cuando un mensaje contiene triggers de ambas familias (p. ej. "recuérdame agregar leche a compras cada martes"), se clasifica como `reminder_request`. El verbo `recuérdame` señala la acción primaria; el "agregar" es contenido del recordatorio. Evita falsos negativos en frases mixtas donde la tool real es `create_scheduled_task`.
+  - **Persistencia del mensaje aumentado**: cuando se adjunta el sufijo de sugerencia, `agent.ts` guarda en `session_messages` el texto final concatenado (no la respuesta cruda del LLM), para que el siguiente turno vea el antecedente y entienda un "sí, hazlo recurrente" como respuesta a la oferta.
+  - Integración mínimamente invasiva: `src/agent/agent.ts` acepta un parámetro opcional `repetitionDetector`. El scheduler NO lo recibe (tareas automáticas no cuentan como pedidos del usuario).
+  - Nuevas variables de entorno: `REPETITION_DETECTION_ENABLED` (default `true`), `REPETITION_WINDOW_DAYS` (7), `REPETITION_THRESHOLD` (3), `REPETITION_TIGHT_WINDOW_DAYS` (3), `REPETITION_TIGHT_THRESHOLD` (2), `REPETITION_COOLDOWN_DAYS` (7).
+  - MVP conservador: solo sugiere, nunca auto-crea; ≤1 sugerencia por respuesta; errores en la detección se loguean como warn y no interrumpen la respuesta.
+
 ## [1.20.0] - 2026-04-17
 
 ### Added

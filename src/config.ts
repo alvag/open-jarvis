@@ -148,6 +148,13 @@ const envSchema = z
       .default("sonnet"),
     CLAUDE_CODE_TIMEOUT_MINUTES: IntFromString.default(30),
     CLAUDE_CODE_BINARY_PATH: z.string().default("claude"),
+
+    REPETITION_DETECTION_ENABLED: BoolFromString.default(true),
+    REPETITION_WINDOW_DAYS: IntFromString.default(7),
+    REPETITION_THRESHOLD: IntFromString.default(3),
+    REPETITION_TIGHT_WINDOW_DAYS: IntFromString.default(3),
+    REPETITION_TIGHT_THRESHOLD: IntFromString.default(2),
+    REPETITION_COOLDOWN_DAYS: IntFromString.default(7),
   })
   .superRefine((val, ctx) => {
     if (val.LLM_PROVIDER === "openrouter" && !val.OPENROUTER_API_KEY) {
@@ -276,5 +283,13 @@ export const config = {
     defaultModel: env.CLAUDE_CODE_DEFAULT_MODEL,
     timeoutMinutes: env.CLAUDE_CODE_TIMEOUT_MINUTES,
     binaryPath: env.CLAUDE_CODE_BINARY_PATH,
+  },
+  repetition: {
+    enabled: env.REPETITION_DETECTION_ENABLED,
+    windowDays: env.REPETITION_WINDOW_DAYS,
+    threshold: env.REPETITION_THRESHOLD,
+    tightWindowDays: env.REPETITION_TIGHT_WINDOW_DAYS,
+    tightThreshold: env.REPETITION_TIGHT_THRESHOLD,
+    cooldownDays: env.REPETITION_COOLDOWN_DAYS,
   },
 } as const;

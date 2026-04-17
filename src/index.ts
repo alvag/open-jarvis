@@ -47,6 +47,7 @@ import { createGitWorktreeTool } from "./tools/built-in/git-worktree.js";
 import { createGithubPrsTool } from "./tools/built-in/github-prs.js";
 import { createClaudeCodeTool } from "./tools/built-in/invoke-claude-code.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
+import { createRepetitionDetector } from "./proactivity/repetition-detector.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
 import {
@@ -73,6 +74,7 @@ async function main() {
   // 1. Initialize database
   const db = initDatabase(config.paths.database);
   const memoryManager = createMemoryManager(db);
+  const repetitionDetector = createRepetitionDetector(db, config.repetition);
 
   // One-time security backfill scan
   const backfillResult = await runBackfillIfNeeded(db);
@@ -289,6 +291,7 @@ async function main() {
         memoryManager,
         soul,
         config.agent.maxIterations,
+        repetitionDetector,
       );
 
       if (result.toolsUsed.length > 0) {
