@@ -32,6 +32,7 @@ import { createDeleteMemoryTool } from "./tools/built-in/delete-memory.js";
 import { createListMemoriesTool } from "./tools/built-in/list-memories.js";
 import { createAuditMemoriesTool } from "./tools/built-in/audit-memories.js";
 import { createManageListsTool } from "./tools/built-in/manage-lists.js";
+import { createSearchPersonalKnowledgeTool } from "./tools/built-in/search-personal-knowledge.js";
 import { createReadFileTool } from "./tools/built-in/read-file.js";
 import { createWriteFileTool } from "./tools/built-in/write-file.js";
 import { createListDirectoryTool } from "./tools/built-in/list-directory.js";
@@ -136,6 +137,7 @@ async function main() {
   toolRegistry.register(createListMemoriesTool(memoryManager));
   toolRegistry.register(createAuditMemoriesTool(memoryManager));
   toolRegistry.register(createManageListsTool(db));
+  toolRegistry.register(createSearchPersonalKnowledgeTool(memoryManager, db));
   toolRegistry.register(createProposeToolTool());
   toolRegistry.register(createTableImageTool());
   toolRegistry.register(createRestartServerTool());

@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-04-16
+
+### Added
+- **Unified personal knowledge search** (`search_personal_knowledge` tool): lets the user ask free-form questions like "busca Fausto", "qué tengo sobre Arely", "¿leche en mis listas?" and get a single aggregated response combining memories and list items.
+  - Reuses `memoryManager.searchMemories` (FTS5 + LIKE fallback) for the memories side; runs a direct SQL query with `LIKE ... ESCAPE '\'` against `list_items` JOIN `lists` for the lists side.
+  - Optional `list_hint` scopes the list search to a single list (case-insensitive exact name match). Omitted by default for global search.
+  - Multi-term queries are ranked per-item by how many terms matched (case-insensitive substring).
+  - Discarded list items are excluded from results.
+  - Returns structured data plus a pre-rendered `formatted` field suitable for direct Telegram delivery (sections for Memorias and Listas with status glyphs; "no matches" message when empty).
+  - Zero schema changes — no new tables or columns.
+
 ## [1.16.0] - 2026-04-16
 
 ### Added
