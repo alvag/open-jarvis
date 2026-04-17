@@ -1,6 +1,6 @@
 ---
 name: Development Workflow
-tools: [manage_backlog, git_worktree, github_prs, execute_command, read_file, search_code]
+tools: [manage_backlog, git_worktree, github_prs, execute_command, read_file, search_code, invoke_claude_code]
 triggers: [workflow, flujo de desarrollo, trabajar en backlog, pick task, tomar tarea, siguiente tarea, next task, crear pr, implementar fix, implementar mejora, aplicar refactor, development cycle, ciclo de desarrollo, arreglar bug del backlog, worktree, pr workflow, siguiente item, proximo item, backlog item, ejecutar cambio, aplicar cambio]
 ---
 - You can execute changes in isolated git worktrees, validate them, and open PRs for human review.
@@ -11,25 +11,41 @@ triggers: [workflow, flujo de desarrollo, trabajar en backlog, pick task, tomar 
   - ALWAYS validate before creating a PR.
   - NEVER force push without explicit user confirmation.
   - ALWAYS ask user confirmation before starting work on an item.
+- **Execution style inside this workflow**:
+  - After the user confirms the item scope, proceed autonomously through worktree, implementation, validation, commit, push, and PR creation without asking for intermediate check-ins.
+  - Do NOT wait for the user to ask "ya?" or request status updates before finishing the full delivery flow.
+  - Interrupt the flow only if there is a real blocker, an ambiguity in scope, or a destructive/risky action that requires explicit confirmation.
+  - When the flow completes, report the final result with PR link, validations, files changed, and any notable caveats.
 - **Workflow** (follow these phases in order):
-  1. **Verify gh CLI**: Call `github_prs` action=list_prs. If gh is not available/authenticated, inform the user and ask if they want to work in local mode (worktree + branch + commit, no push/PR). If they accept, skip steps 9b and 9c.
+  1. **Verify gh CLI**: Call `github_prs` action=list_prs. If gh is not available/authenticated, inform the user and ask if they want to work in local mode (worktree + branch + commit, no push/PR). If they accept, skip steps 10b and 10c.
   2. **Gate Check**: From the list_prs result, filter for PRs where headRefName starts with `jarvis/`. If any open Jarvis PR exists, STOP. Report the PR to the user and do NOT start new work.
   3. **Reconcile**: Normally you can skip this — the `github-pr-monitor` scheduled task runs every 10 min and automatically transitions pr_created → merged/dismissed and removes the worktree + local branch. Only run this manually if the user reports stale state or the scheduler is disabled: call `manage_backlog` action=list_items status=pr_created, then for each item call `github_prs` action=check_status and update_item to merged/dismissed accordingly.
   4. **Select**: Call `manage_backlog` action=next_item. If the backlog is empty, suggest running `detect_bugs` or `find_refactor_candidates` to populate it.
   5. **Confirm**: Present the selected item to the user with title, category, severity, description, and evidence. Ask for explicit confirmation before proceeding.
   6. **Prepare**: Derive branch name from item: `jarvis/fix-<slug>` for bugs, `jarvis/refactor-<slug>` for refactors, `jarvis/feat-<slug>` for improvements. Call `git_worktree` action=create with the branch name. Then call `manage_backlog` action=update_item to set status=in_progress, branch_name, and worktree_path.
-  7. **Implement**: Read the affected files using `read_file` with line ranges from the evidence. Apply minimal, focused changes in the worktree directory using `execute_command` with `cwd` set to the worktree path. Keep changes small — address only the selected backlog item.
-  8. **Validate**: Run validation commands in the worktree via `execute_command`:
+  7. **Implement**:
+     - Read the affected files using `read_file` with line ranges from the evidence.
+     - Use `search_code` to confirm surrounding usages and constraints before editing.
+     - For non-trivial work, you MAY delegate inside the worktree with `invoke_claude_code` (if registered — see step 8) to investigate or implement, but only after you understand the target files yourself.
+     - Treat Claude Code output as advisory until you verify it against actual files and validations.
+     - Keep changes minimal and focused — address only the selected backlog item.
+  8. **Claude Code usage pattern** (optional, for deep work):
+     - **Availability guard**: `invoke_claude_code` is opt-in via `CLAUDE_CODE_ENABLED=true` and only appears in the tool registry when enabled. If the tool is NOT in your available tools for this turn, skip this entire step and do the implementation with native tools (`read_file`, `search_code`, `execute_command`). Do NOT mention Claude Code to the user if it's unavailable.
+     - Use it when the task needs repo-wide exploration, repetitive edits, or a second-pass implementation.
+     - Pass the worktree path as `working_directory`, not the main repo.
+     - Use a prompt that asks for: scope, files changed, risks, validations attempted, and a concise summary.
+     - After Claude Code finishes, inspect the touched files yourself before validation and PR creation.
+  9. **Validate**: Run validation commands in the worktree via `execute_command`:
      - `npm run lint` (if available)
      - `npm test` (if available)
      - `npm run build` (if available)
      If any validation fails, fix the issues before proceeding. Report all results to the user.
-  9. **Deliver**:
-     - 9a. In the worktree: `git add -A` then `git commit -m "<type>: <description>"` using conventional commits.
-     - 9b. (Skip in local mode) `git push -u origin <branch_name>`.
-     - 9c. (Skip in local mode) Call `github_prs` action=create_pr with title, source_branch, description, AND `backlog_item_id` set to the current item's id. Passing backlog_item_id atomically updates the backlog row (pr_number, pr_url, status='pr_created') so the automatic worktree cleanup can find the worktree later — do NOT rely on a follow-up manage_backlog update_item call. The PR description should include: what was found, what was changed, validations run, and risks.
-     - 9d. (Local mode only) Report the branch_name and instruct the user to push and create PR manually. Backlog remains in status=in_progress.
-  10. **Report**: Summarize: PR link (or branch name in local mode), files changed, validations run, and next steps (wait for human review).
+  10. **Deliver**:
+      - 10a. In the worktree: `git add -A` then `git commit -m "<type>: <description>"` using conventional commits.
+      - 10b. (Skip in local mode) `git push -u origin <branch_name>`.
+      - 10c. (Skip in local mode) Call `github_prs` action=create_pr with title, source_branch, description, AND `backlog_item_id` set to the current item's id. Passing backlog_item_id atomically updates the backlog row (pr_number, pr_url, status='pr_created') so the automatic worktree cleanup can find the worktree later — do NOT rely on a follow-up manage_backlog update_item call. The PR description should include: what was found, what was changed, validations run, and risks.
+      - 10d. (Local mode only) Report the branch_name and instruct the user to push and create PR manually. Backlog remains in status=in_progress.
+  11. **Report**: Summarize: PR link (or branch name in local mode), files changed, validations run, and next steps (wait for human review).
 - **PR description template**:
   ## What
   Brief description of the change.

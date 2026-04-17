@@ -4,6 +4,16 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-04-17
+
+### Changed
+- Integración documental inicial de **Claude Code** en los flujos de revisión y desarrollo:
+  - `skills/development-workflow.md`: ahora incluye `invoke_claude_code` como herramienta opcional para investigación profunda o implementación no trivial dentro del *worktree*, con reglas explícitas para verificar resultados antes de usarlos y para delegar siempre sobre el worktree activo.
+  - `skills/proactive-review.md`: añade un paso opcional de *deep dive* con Claude Code para casos con contexto amplio, señales conflictivas o necesidad de exploración repo-wide, además de reglas para no tratar su salida como evidencia suficiente por sí sola.
+  - `CLAUDE.md`: documenta la estrategia híbrida recomendada — primero herramientas nativas para reunir evidencia con `file:line`, luego Claude Code como segunda pasada para exploración, hipótesis alternativas o trabajo repetitivo.
+  - **Availability guard** en ambos skills: dado que `invoke_claude_code` se registra solo si `CLAUDE_CODE_ENABLED=true` (opt-in), cada paso que menciona la tool ahora incluye una nota explícita para saltarlo silenciosamente cuando la tool no está en el registry de la sesión, evitando que el LLM intente llamar una tool inexistente y confunda al usuario con menciones irrelevantes.
+- Bump de versión a `1.18.1` y sincronización de `package-lock.json` vía `npm install`.
+
 ## [1.18.0] - 2026-04-17
 
 ### Added

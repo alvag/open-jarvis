@@ -60,6 +60,13 @@ src/
 - **Search**: LIKE-based on key and content fields
 - **Sessions**: Auto-created when last activity > timeout threshold
 
+### Review and development workflow guidance
+- Use native code tools first (`read_file`, `search_code`, `detect_bugs`, `find_refactor_candidates`, `analyze_codebase`) to gather evidence with concrete file:line references.
+- Use `invoke_claude_code` as a second-pass assistant for large-scope exploration, repetitive implementation work, or alternative hypotheses.
+- Treat Claude Code output as advisory until verified against actual repository files or validation commands.
+- When delegating implementation work, always point Claude Code at the active git worktree rather than the main repository path.
+- Good Claude Code review prompts should request: summary, findings, affected files, risks, validations attempted, and explicit uncertainty notes.
+
 ## Security
 - Telegram user ID whitelist (fail closed)
 - All secrets in `.env` (gitignored)
