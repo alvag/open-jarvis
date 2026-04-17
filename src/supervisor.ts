@@ -1,6 +1,6 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import pino from "pino";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { EXIT_CLEAN, EXIT_RESTART, EXIT_UPDATE } from "./exit-codes.js";
 
 // --- Constants ---
@@ -11,6 +11,7 @@ const HEARTBEAT_TIMEOUT_MS = 30_000;
 const GIT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const UPDATE_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 const SUPERVISOR_LOG = "./data/supervisor.log";
+const SUPERVISOR_FILES = ["src/supervisor.ts", "src/exit-codes.ts"];
 const isDev = process.env.NODE_ENV !== "production";
 
 // Ensure data directory exists at module load
@@ -76,6 +77,7 @@ let pendingAutoUpdate = false;
 let needsNpmInstall = false;
 let updateInProgress = false;
 let updateRetryBlockedUntil = 0;
+let supervisorNeedsSelfRestart = false;
 let heartbeatDeadline: ReturnType<typeof setTimeout> | null = null;
 let gitPollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -86,10 +88,30 @@ function changedFilesRequireInstall(changedFiles: string): boolean {
 
 function restoreGeneratedLockfile(): void {
   try {
-    execSync("git restore package-lock.json", { stdio: "pipe" });
+    execSync("git checkout HEAD -- package-lock.json", { stdio: "pipe" });
   } catch {
     // Ignore if the file does not exist or is not tracked in this repo.
   }
+}
+
+function supervisorCodeChanged(changedFiles: string): boolean {
+  const files = changedFiles.split("\n").map((f) => f.trim()).filter(Boolean);
+  return files.some((f) => SUPERVISOR_FILES.includes(f));
+}
+
+function selfRestart(): never {
+  supLog.info("Supervisor self-restarting to pick up code changes...");
+  void notifyTelegram("Supervisor reiniciándose para aplicar cambios en su propio código...");
+  const child = spawn(process.execPath, process.argv.slice(1), {
+    detached: true,
+    stdio: "inherit",
+    env: process.env,
+  });
+  try {
+    writeFileSync(".pid", String(child.pid));
+  } catch { /* ignore */ }
+  child.unref();
+  process.exit(0);
 }
 
 function setUpdateRetryCooldown(reason: string): void {
@@ -140,6 +162,7 @@ function pollForUpdates(child: ChildProcess): void {
         { encoding: "utf8" },
       );
       needsNpmInstall = changedFilesRequireInstall(changedFiles);
+      supervisorNeedsSelfRestart = supervisorCodeChanged(changedFiles);
       pendingAutoUpdate = true;
 
       if (gitPollInterval) {
@@ -226,6 +249,9 @@ function startBot(): void {
         void notifyTelegram(
           `Actualización aplicada. Reiniciando con commit ${newHead.slice(0, 8)}...`,
         );
+        if (supervisorNeedsSelfRestart) {
+          selfRestart();
+        }
       } catch (err) {
         const message = (err as Error).message;
         setUpdateRetryCooldown(message);
@@ -236,6 +262,7 @@ function startBot(): void {
       }
       needsNpmInstall = false;
       updateInProgress = false;
+      supervisorNeedsSelfRestart = false;
       backoff = 1000;
       startBot();
       return;
@@ -248,10 +275,8 @@ function startBot(): void {
         break;
 
       case EXIT_RESTART:
-        supLog.info("Restart requested. Restarting immediately...");
-        backoff = 1000;
-        startBot();
-        break;
+        supLog.info("Restart requested. Self-restarting supervisor...");
+        selfRestart();
 
       case EXIT_UPDATE:
         supLog.info("Update requested. Pulling latest code...");
@@ -273,6 +298,9 @@ function startBot(): void {
             if (changedFilesRequireInstall(changedFiles)) {
               supLog.info("package manifest changed — running npm ci");
               execSync("npm ci", { stdio: "inherit" });
+            }
+            if (supervisorCodeChanged(changedFiles)) {
+              selfRestart();
             }
           }
           updateRetryBlockedUntil = 0;

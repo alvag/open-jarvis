@@ -4,6 +4,13 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-04-17
+
+### Fixed
+- **Supervisor self-restart**: el supervisor ahora se reinicia a sí mismo cuando `src/supervisor.ts` o `src/exit-codes.ts` cambian en un auto-update o `/update`, evitando que corra código viejo indefinidamente.
+- **`/restart` siempre reinicia el supervisor**: garantiza que el proceso supervisor corra el código más reciente del disco.
+- **`restoreGeneratedLockfile` más robusto**: cambiado de `git restore` a `git checkout HEAD --` para ser explícito sobre el source y evitar edge cases con el index.
+
 ## [1.18.1] - 2026-04-17
 
 ### Changed
