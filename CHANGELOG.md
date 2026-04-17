@@ -4,6 +4,15 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-04-17
+
+### Added
+- **Validación estricta de configuración con Zod** (`src/config.ts`): el archivo completo se refactorizó para validar `process.env` con un schema Zod antes de exportar el objeto `config`. Fail-fast al startup con mensajes de error claros por variable (ej. `TELEGRAM_ALLOWED_USER_IDS: "abc" is not a valid integer`, `BRIEFING_TIME: must be HH:MM`) en lugar de crashes opacos en runtime.
+  - Tipos validados: enteros (`^-?\d+$`), booleanos (`"true"|"false"`), listas CSV, listas de enteros, horas `HH:MM` con rangos válidos (`00:00`-`23:59`), enums (`LLM_PROVIDER`, `CLAUDE_CODE_DEFAULT_MODEL`).
+  - **Regla cross-field**: `OPENROUTER_API_KEY` ahora solo es obligatorio cuando `LLM_PROVIDER=openrouter` (antes lo exigía siempre el wrapper manual `requireEnv`).
+  - **Preserva comportamiento previo**: variables con valor vacío (`FOO=`) se tratan como no definidas para que los defaults apliquen; la forma del objeto `config` exportado es idéntica a la anterior (sin cambios en las 93 referencias `config.*` repartidas en 8 archivos).
+- Dependencia nueva: `zod@^4.3.6`.
+
 ## [1.19.0] - 2026-04-17
 
 ### Fixed
