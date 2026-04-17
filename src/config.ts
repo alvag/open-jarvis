@@ -1,140 +1,280 @@
 import "dotenv/config";
+import { z } from "zod";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`Missing required environment variable: ${name}`);
-    process.exit(1);
+const BoolFromString = z
+  .enum(["true", "false"])
+  .transform((v) => v === "true");
+
+const IntFromString = z
+  .string()
+  .regex(/^-?\d+$/, "must be an integer")
+  .transform((v) => parseInt(v, 10));
+
+const CsvList = z
+  .string()
+  .transform((v) =>
+    v
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+const IntCsvList = z.string().transform((v, ctx) => {
+  const parts = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    ctx.addIssue({ code: "custom", message: "must contain at least one value" });
+    return z.NEVER;
   }
-  return value;
-}
+  const ids: number[] = [];
+  for (const part of parts) {
+    if (!/^-?\d+$/.test(part)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${part}" is not a valid integer`,
+      });
+      return z.NEVER;
+    }
+    ids.push(parseInt(part, 10));
+  }
+  return ids;
+});
 
-const VALID_LLM_PROVIDERS = ["openrouter", "codex"] as const;
-type LlmProvider = (typeof VALID_LLM_PROVIDERS)[number];
+const TimeHHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
 
-const rawProvider = process.env.LLM_PROVIDER || "openrouter";
-if (!VALID_LLM_PROVIDERS.includes(rawProvider as LlmProvider)) {
-  console.error(`Invalid LLM_PROVIDER="${rawProvider}". Must be one of: ${VALID_LLM_PROVIDERS.join(", ")}`);
+const TimesCsvList = z.string().transform((v, ctx) => {
+  const parts = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const p of parts) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(p)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${p}" is not a valid HH:MM time`,
+      });
+      return z.NEVER;
+    }
+  }
+  return parts;
+});
+
+const envSchema = z
+  .object({
+    TELEGRAM_BOT_TOKEN: z.string().min(1),
+    TELEGRAM_ALLOWED_USER_IDS: IntCsvList,
+    PRIMARY_USER_ID: z.string().optional(),
+
+    LLM_PROVIDER: z.enum(["openrouter", "codex"]).default("openrouter"),
+
+    OPENROUTER_API_KEY: z.string().optional(),
+    OPENROUTER_MODEL_SIMPLE: z.string().default("deepseek/deepseek-chat-v3-0324"),
+    OPENROUTER_MODEL_MODERATE: z.string().default("deepseek/deepseek-v3.2"),
+    OPENROUTER_MODEL_COMPLEX: z.string().default("anthropic/claude-sonnet-4.6"),
+
+    CODEX_MODEL_SIMPLE: z.string().default("gpt-5.4-mini"),
+    CODEX_MODEL_MODERATE: z.string().default("gpt-5.4"),
+    CODEX_MODEL_COMPLEX: z.string().default("gpt-5.4"),
+
+    AGENT_MAX_ITERATIONS: IntFromString.default(10),
+    SESSION_TIMEOUT_MINUTES: IntFromString.default(30),
+    SESSION_RETENTION_DAYS: IntFromString.default(30),
+
+    GWS_DRIVE_ENABLED: BoolFromString.default(false),
+    GWS_GMAIL_ENABLED: BoolFromString.default(false),
+    GWS_CALENDAR_ENABLED: BoolFromString.default(false),
+    GWS_SHEETS_ENABLED: BoolFromString.default(false),
+    GWS_DRIVE_FOLDER_IDS: CsvList.default([]),
+
+    BITBUCKET_EMAIL: z.string().default(""),
+    BITBUCKET_API_TOKEN: z.string().default(""),
+    BITBUCKET_WORKSPACE: z.string().default(""),
+    BITBUCKET_REPO_SLUG: z.string().default(""),
+
+    TAVILY_API_KEY: z.string().default(""),
+    FIRECRAWL_API_KEY: z.string().default(""),
+
+    GROQ_API_KEY: z.string().default(""),
+    TRANSCRIPTION_LANGUAGE: z.string().default("es"),
+
+    DB_PATH: z.string().default("./data/jarvis.db"),
+    SOUL_PATH: z.string().default("./soul.md"),
+
+    SCHEDULER_TIMEZONE: z.string().optional(),
+    BRIEFING_TIME: TimeHHMM.default("07:00"),
+    BRIEFING_ENABLED: BoolFromString.default(true),
+    PR_POLL_INTERVAL_MINUTES: IntFromString.default(15),
+    PR_MONITOR_ENABLED: BoolFromString.default(true),
+    CONSOLIDATION_ENABLED: BoolFromString.default(true),
+    CONSOLIDATION_TIME: TimeHHMM.default("23:00"),
+
+    CODEBASE_ENABLED: BoolFromString.default(true),
+    CODEBASE_ROOT: z.string().optional(),
+    CODEBASE_MAX_FILE_SIZE: IntFromString.default(102400),
+    CODEBASE_MAX_OUTPUT: IntFromString.default(6000),
+    CODEBASE_IGNORE: CsvList.default([
+      "node_modules",
+      ".git",
+      "dist",
+      "data",
+      ".env",
+      "*.db",
+      "codex-tokens.json",
+      "mcp_config.json",
+      ".worktrees",
+    ]),
+
+    WORKFLOW_ENABLED: BoolFromString.default(false),
+    WORKFLOW_DEFAULT_BRANCH: z.string().default("main"),
+    WORKFLOW_WORKTREES_DIR: z.string().default(".worktrees"),
+    WORKFLOW_BRANCH_PREFIX: z.string().default("jarvis"),
+    WORKFLOW_VALIDATION_COMMANDS: CsvList.default([]),
+    WORKFLOW_AUTO_CLEANUP_WORKTREE: BoolFromString.default(true),
+    WORKFLOW_PR_POLL_INTERVAL_MINUTES: IntFromString.default(10),
+
+    EXTRA_SAFE_COMMANDS: CsvList.default([]),
+
+    CODE_REVIEW_ENABLED: BoolFromString.default(false),
+    CODE_REVIEW_TIMES: TimesCsvList.default(["14:00"]),
+    CODE_REVIEW_MAX_BACKLOG_FILES: IntFromString.default(3),
+    CODE_REVIEW_AUTO_APPROVE: BoolFromString.default(true),
+
+    CLAUDE_CODE_ENABLED: BoolFromString.default(false),
+    CLAUDE_CODE_ALLOWED_DIRS: CsvList.default([]),
+    CLAUDE_CODE_DEFAULT_MODEL: z
+      .enum(["opus", "sonnet", "haiku"])
+      .default("sonnet"),
+    CLAUDE_CODE_TIMEOUT_MINUTES: IntFromString.default(30),
+    CLAUDE_CODE_BINARY_PATH: z.string().default("claude"),
+  })
+  .superRefine((val, ctx) => {
+    if (val.LLM_PROVIDER === "openrouter" && !val.OPENROUTER_API_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["OPENROUTER_API_KEY"],
+        message: "required when LLM_PROVIDER=openrouter",
+      });
+    }
+  });
+
+// Convert empty-string env vars to undefined so zod defaults kick in
+// (preserves prior behavior where `FOO=` was treated the same as unset).
+const rawEnv = Object.fromEntries(
+  Object.entries(process.env).map(([k, v]) => [k, v === "" ? undefined : v]),
+);
+
+const parsed = envSchema.safeParse(rawEnv);
+if (!parsed.success) {
+  console.error("Invalid environment configuration:");
+  for (const issue of parsed.error.issues) {
+    const path = issue.path.join(".") || "(root)";
+    console.error(`  - ${path}: ${issue.message}`);
+  }
   process.exit(1);
 }
-const llmProvider = rawProvider as LlmProvider;
+const env = parsed.data;
 
 export const config = {
-  llmProvider,
+  llmProvider: env.LLM_PROVIDER,
   telegram: {
-    botToken: requireEnv("TELEGRAM_BOT_TOKEN"),
-    allowedUserIds: requireEnv("TELEGRAM_ALLOWED_USER_IDS")
-      .split(",")
-      .map((id) => parseInt(id.trim(), 10)),
+    botToken: env.TELEGRAM_BOT_TOKEN,
+    allowedUserIds: env.TELEGRAM_ALLOWED_USER_IDS,
   },
   openrouter: {
-    apiKey: llmProvider === "openrouter" ? requireEnv("OPENROUTER_API_KEY") : (process.env.OPENROUTER_API_KEY || ""),
+    apiKey: env.OPENROUTER_API_KEY ?? "",
     models: {
-      simple:
-        process.env.OPENROUTER_MODEL_SIMPLE ||
-        "deepseek/deepseek-chat-v3-0324",
-      moderate:
-        process.env.OPENROUTER_MODEL_MODERATE ||
-        "deepseek/deepseek-v3.2",
-      complex:
-        process.env.OPENROUTER_MODEL_COMPLEX ||
-        "anthropic/claude-sonnet-4.6",
+      simple: env.OPENROUTER_MODEL_SIMPLE,
+      moderate: env.OPENROUTER_MODEL_MODERATE,
+      complex: env.OPENROUTER_MODEL_COMPLEX,
     },
   },
   codex: {
     models: {
-      simple: process.env.CODEX_MODEL_SIMPLE || "gpt-5.4-mini",
-      moderate: process.env.CODEX_MODEL_MODERATE || "gpt-5.4",
-      complex: process.env.CODEX_MODEL_COMPLEX || "gpt-5.4",
+      simple: env.CODEX_MODEL_SIMPLE,
+      moderate: env.CODEX_MODEL_MODERATE,
+      complex: env.CODEX_MODEL_COMPLEX,
     },
   },
   agent: {
-    maxIterations: parseInt(process.env.AGENT_MAX_ITERATIONS || "10", 10),
-    sessionTimeoutMinutes: parseInt(
-      process.env.SESSION_TIMEOUT_MINUTES || "30",
-      10,
-    ),
-    sessionRetentionDays: parseInt(
-      process.env.SESSION_RETENTION_DAYS || "30",
-      10,
-    ),
-    primaryUserId: String(
-      (process.env.PRIMARY_USER_ID || process.env.TELEGRAM_ALLOWED_USER_IDS || "").split(",")[0].trim(),
-    ),
+    maxIterations: env.AGENT_MAX_ITERATIONS,
+    sessionTimeoutMinutes: env.SESSION_TIMEOUT_MINUTES,
+    sessionRetentionDays: env.SESSION_RETENTION_DAYS,
+    primaryUserId: env.PRIMARY_USER_ID ?? String(env.TELEGRAM_ALLOWED_USER_IDS[0]),
   },
   google: {
     enabled: {
-      drive: process.env.GWS_DRIVE_ENABLED === "true",
-      gmail: process.env.GWS_GMAIL_ENABLED === "true",
-      calendar: process.env.GWS_CALENDAR_ENABLED === "true",
-      sheets: process.env.GWS_SHEETS_ENABLED === "true",
+      drive: env.GWS_DRIVE_ENABLED,
+      gmail: env.GWS_GMAIL_ENABLED,
+      calendar: env.GWS_CALENDAR_ENABLED,
+      sheets: env.GWS_SHEETS_ENABLED,
     },
-    driveFolderIds: process.env.GWS_DRIVE_FOLDER_IDS
-      ? process.env.GWS_DRIVE_FOLDER_IDS.split(",").map((id) => id.trim()).filter(Boolean)
-      : [],
+    driveFolderIds: env.GWS_DRIVE_FOLDER_IDS,
   },
   bitbucket: {
-    enabled: !!(process.env.BITBUCKET_EMAIL && process.env.BITBUCKET_API_TOKEN),
-    email: process.env.BITBUCKET_EMAIL || "",
-    apiToken: process.env.BITBUCKET_API_TOKEN || "",
-    defaultWorkspace: process.env.BITBUCKET_WORKSPACE || "",
-    defaultRepoSlug: process.env.BITBUCKET_REPO_SLUG || "",
+    enabled: !!(env.BITBUCKET_EMAIL && env.BITBUCKET_API_TOKEN),
+    email: env.BITBUCKET_EMAIL,
+    apiToken: env.BITBUCKET_API_TOKEN,
+    defaultWorkspace: env.BITBUCKET_WORKSPACE,
+    defaultRepoSlug: env.BITBUCKET_REPO_SLUG,
   },
   tavily: {
-    enabled: !!process.env.TAVILY_API_KEY,
-    apiKey: process.env.TAVILY_API_KEY || "",
+    enabled: !!env.TAVILY_API_KEY,
+    apiKey: env.TAVILY_API_KEY,
   },
   firecrawl: {
-    enabled: !!process.env.FIRECRAWL_API_KEY,
-    apiKey: process.env.FIRECRAWL_API_KEY || "",
+    enabled: !!env.FIRECRAWL_API_KEY,
+    apiKey: env.FIRECRAWL_API_KEY,
   },
   transcription: {
-    enabled: !!process.env.GROQ_API_KEY,
-    apiKey: process.env.GROQ_API_KEY || "",
-    language: process.env.TRANSCRIPTION_LANGUAGE || "es",
+    enabled: !!env.GROQ_API_KEY,
+    apiKey: env.GROQ_API_KEY,
+    language: env.TRANSCRIPTION_LANGUAGE,
   },
   paths: {
-    database: process.env.DB_PATH || "./data/jarvis.db",
-    soul: process.env.SOUL_PATH || "./soul.md",
+    database: env.DB_PATH,
+    soul: env.SOUL_PATH,
   },
   scheduler: {
-    timezone: process.env.SCHEDULER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    briefingTime: process.env.BRIEFING_TIME || "07:00",
-    briefingEnabled: process.env.BRIEFING_ENABLED !== "false",
-    prPollIntervalMinutes: parseInt(process.env.PR_POLL_INTERVAL_MINUTES || "15", 10),
-    prMonitorEnabled: process.env.PR_MONITOR_ENABLED !== "false",
-    consolidationEnabled: process.env.CONSOLIDATION_ENABLED !== "false",
-    consolidationTime: process.env.CONSOLIDATION_TIME || "23:00",
+    timezone:
+      env.SCHEDULER_TIMEZONE ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    briefingTime: env.BRIEFING_TIME,
+    briefingEnabled: env.BRIEFING_ENABLED,
+    prPollIntervalMinutes: env.PR_POLL_INTERVAL_MINUTES,
+    prMonitorEnabled: env.PR_MONITOR_ENABLED,
+    consolidationEnabled: env.CONSOLIDATION_ENABLED,
+    consolidationTime: env.CONSOLIDATION_TIME,
   },
   codebase: {
-    enabled: process.env.CODEBASE_ENABLED !== "false",
-    root: process.env.CODEBASE_ROOT || process.cwd(),
-    maxFileSize: parseInt(process.env.CODEBASE_MAX_FILE_SIZE || "102400", 10),
-    maxOutputChars: parseInt(process.env.CODEBASE_MAX_OUTPUT || "6000", 10),
-    ignorePatterns: (process.env.CODEBASE_IGNORE || "node_modules,.git,dist,data,.env,*.db,codex-tokens.json,mcp_config.json,.worktrees").split(",").map(s => s.trim()),
+    enabled: env.CODEBASE_ENABLED,
+    root: env.CODEBASE_ROOT || process.cwd(),
+    maxFileSize: env.CODEBASE_MAX_FILE_SIZE,
+    maxOutputChars: env.CODEBASE_MAX_OUTPUT,
+    ignorePatterns: env.CODEBASE_IGNORE,
   },
   workflow: {
-    enabled: process.env.WORKFLOW_ENABLED === "true",
-    defaultBranch: process.env.WORKFLOW_DEFAULT_BRANCH || "main",
-    worktreesDir: process.env.WORKFLOW_WORKTREES_DIR || ".worktrees",
-    branchPrefix: process.env.WORKFLOW_BRANCH_PREFIX || "jarvis",
-    validationCommands: (process.env.WORKFLOW_VALIDATION_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
-    autoCleanupWorktree: process.env.WORKFLOW_AUTO_CLEANUP_WORKTREE !== "false",
-    prPollIntervalMinutes: parseInt(process.env.WORKFLOW_PR_POLL_INTERVAL_MINUTES || "10", 10),
+    enabled: env.WORKFLOW_ENABLED,
+    defaultBranch: env.WORKFLOW_DEFAULT_BRANCH,
+    worktreesDir: env.WORKFLOW_WORKTREES_DIR,
+    branchPrefix: env.WORKFLOW_BRANCH_PREFIX,
+    validationCommands: env.WORKFLOW_VALIDATION_COMMANDS,
+    autoCleanupWorktree: env.WORKFLOW_AUTO_CLEANUP_WORKTREE,
+    prPollIntervalMinutes: env.WORKFLOW_PR_POLL_INTERVAL_MINUTES,
   },
-  extraSafeCommands: (process.env.EXTRA_SAFE_COMMANDS || "").split(",").map(s => s.trim()).filter(Boolean),
+  extraSafeCommands: env.EXTRA_SAFE_COMMANDS,
   codeReview: {
-    enabled: process.env.CODE_REVIEW_ENABLED === "true",
-    times: (process.env.CODE_REVIEW_TIMES || "14:00").split(",").map(s => s.trim()).filter(Boolean),
-    maxBacklogFiles: parseInt(process.env.CODE_REVIEW_MAX_BACKLOG_FILES || "3", 10),
-    autoApprove: process.env.CODE_REVIEW_AUTO_APPROVE !== "false",
+    enabled: env.CODE_REVIEW_ENABLED,
+    times: env.CODE_REVIEW_TIMES,
+    maxBacklogFiles: env.CODE_REVIEW_MAX_BACKLOG_FILES,
+    autoApprove: env.CODE_REVIEW_AUTO_APPROVE,
   },
   claudeCode: {
-    enabled: process.env.CLAUDE_CODE_ENABLED === "true",
-    allowedDirs: (process.env.CLAUDE_CODE_ALLOWED_DIRS || "")
-      .split(",").map(s => s.trim()).filter(Boolean),
-    defaultModel: process.env.CLAUDE_CODE_DEFAULT_MODEL || "sonnet",
-    timeoutMinutes: parseInt(process.env.CLAUDE_CODE_TIMEOUT_MINUTES || "30", 10),
-    binaryPath: process.env.CLAUDE_CODE_BINARY_PATH || "claude",
+    enabled: env.CLAUDE_CODE_ENABLED,
+    allowedDirs: env.CLAUDE_CODE_ALLOWED_DIRS,
+    defaultModel: env.CLAUDE_CODE_DEFAULT_MODEL,
+    timeoutMinutes: env.CLAUDE_CODE_TIMEOUT_MINUTES,
+    binaryPath: env.CLAUDE_CODE_BINARY_PATH,
   },
 } as const;
