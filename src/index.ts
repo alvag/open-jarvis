@@ -45,6 +45,7 @@ import { createManageBacklogTool } from "./tools/built-in/manage-backlog.js";
 import { createManageCodeReviewLogTool } from "./tools/built-in/manage-code-review-log.js";
 import { createGitWorktreeTool } from "./tools/built-in/git-worktree.js";
 import { createGithubPrsTool } from "./tools/built-in/github-prs.js";
+import { createClaudeCodeTool } from "./tools/built-in/invoke-claude-code.js";
 import { runBackfillIfNeeded } from "./memory/memory-backfill.js";
 import type { ApprovalDeps } from "./tools/built-in/approval-deps.js";
 import { createApprovalGate } from "./security/approval-gate.js";
@@ -202,6 +203,18 @@ async function main() {
     toolRegistry.register(createGitWorktreeTool(config.codebase));
     toolRegistry.register(createGithubPrsTool(config.codebase.root, db));
     log.info("Workflow tools enabled (git worktree + GitHub PRs)");
+  }
+
+  // Claude Code CLI invocation (opt-in via CLAUDE_CODE_ENABLED)
+  if (config.claudeCode.enabled) {
+    toolRegistry.register(createClaudeCodeTool({
+      approvalDeps,
+      config: config.claudeCode,
+    }));
+    log.info(
+      { allowedDirs: config.claudeCode.allowedDirs, defaultModel: config.claudeCode.defaultModel },
+      "Claude Code invocation tool enabled (invoke_claude_code)",
+    );
   }
 
   // Shell execution tool (always registered — security handled inside the tool)

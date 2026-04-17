@@ -4,6 +4,17 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-04-17
+
+### Added
+- **`invoke_claude_code` tool**: delega tareas de desarrollo al CLI local de Claude Code (`claude -p`). El agente pasa un `prompt` y un `working_directory` absoluto; Claude Code ejecuta autónomamente (edita archivos, corre comandos, hace commits) con `--dangerously-skip-permissions` dentro del directorio permitido.
+  - **Fire-and-forget con resultado por Telegram**: la tool retorna inmediatamente al agente (`awaiting_result:true`) y el resultado final llega por Telegram via `approvalDeps.sendResult`, evitando bloquear el agent loop durante tareas largas.
+  - **Validación estricta de path**: debe ser absoluto, existir, ser directorio, y estar contenido en `CLAUDE_CODE_ALLOWED_DIRS` (o dentro del `$HOME` si la lista está vacía). Rechaza paths con `..` o fuera de scope.
+  - **Continuación de sesiones**: parámetro opcional `session_id` que se traduce a `--resume <id>` para mantener contexto entre invocaciones. El `session_id` viene incluido en el mensaje de resultado para que el LLM lo reuse.
+  - **Output JSON parseado**: usa `--output-format json`; muestra `result`, `num_turns`, `total_cost_usd` y `session_id` formateados. Fallbacks para timeout, exit≠0 y parse error.
+  - **Timeout configurable**: `CLAUDE_CODE_TIMEOUT_MINUTES` (default 30). Al expirar, envía `SIGTERM` y luego `SIGKILL` tras 5s.
+  - **Opt-in**: `CLAUDE_CODE_ENABLED=false` por default. Variables `CLAUDE_CODE_ALLOWED_DIRS`, `CLAUDE_CODE_DEFAULT_MODEL` (opus|sonnet|haiku), `CLAUDE_CODE_TIMEOUT_MINUTES`, `CLAUDE_CODE_BINARY_PATH`.
+
 ## [1.17.0] - 2026-04-16
 
 ### Added

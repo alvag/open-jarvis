@@ -129,4 +129,12 @@ export const config = {
     maxBacklogFiles: parseInt(process.env.CODE_REVIEW_MAX_BACKLOG_FILES || "3", 10),
     autoApprove: process.env.CODE_REVIEW_AUTO_APPROVE !== "false",
   },
+  claudeCode: {
+    enabled: process.env.CLAUDE_CODE_ENABLED === "true",
+    allowedDirs: (process.env.CLAUDE_CODE_ALLOWED_DIRS || "")
+      .split(",").map(s => s.trim()).filter(Boolean),
+    defaultModel: process.env.CLAUDE_CODE_DEFAULT_MODEL || "sonnet",
+    timeoutMinutes: parseInt(process.env.CLAUDE_CODE_TIMEOUT_MINUTES || "30", 10),
+    binaryPath: process.env.CLAUDE_CODE_BINARY_PATH || "claude",
+  },
 } as const;
