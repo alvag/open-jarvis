@@ -1,6 +1,6 @@
 {
   "name": "open-jarvis",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "start:bot": "node --import tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test:structured-memory": "node --test --import tsx src/memory/structured-memory/structured-memory.test.ts src/tools/built-in/structured-memory-tool.test.ts",
     "auth:codex": "tsx src/llm/codex-auth-cli.ts"
   },
   "dependencies": {

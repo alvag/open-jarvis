@@ -4,6 +4,31 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-04-18
+
+### Added
+- **Structured memory layer** (`src/memory/structured-memory/`): nueva capa de conocimiento estructurado sobre personas, proyectos, grupos, contextos y preferencias, complementaria a la memoria libre existente (no la reemplaza).
+  - **Entidades**: tipo `person | project | group | context | preference` con `canonicalName`, `slug`, `aliases[]`, `attributes`, `notes[]`, `tags[]`, `sourceMemoryIds[]`, `confidence`.
+  - **Relaciones**: grafo dirigido entre entidades con `relationType` libre (ej. `spouse_of`, `mother_in_law_of`, `member_of`, `reviewer_of`, `participant_in`).
+  - **Perfil consolidado** (`get_profile`): combina entidad + relaciones entrantes/salientes + memorias libres linkeadas (vía `knowledge_entity_memories`).
+  - **Detección de duplicados**: reglas por canonical match normalizado, alias overlap, similitud fuzzy (Levenshtein ratio) y tipo+tag compartidos. Bloquea creación con score ≥ 0.9 a menos que se pase `force='true'`.
+  - **Merge con confirmación explícita** (`merge_entities`): requiere `confirm='true'`; combina aliases/tags (dedup), concatena notes con prefijo `[merged]`, redirige relaciones (`from_entity_id`/`to_entity_id`), transfiere memorias linkeadas y borra la entidad secundaria. Genera log de operaciones.
+  - **Linking bidireccional a memoria libre** (`link_memory`): asocia una memoria existente por `key` a una entidad e incluye su id en `sourceMemoryIds`. `get_profile` retorna estas memorias.
+  - **Slug único**: autogenerado desde `canonicalName` (normalize + `_`) con sufijo numérico en caso de colisión.
+- **Tool `structured_memory`** (`src/tools/built-in/structured-memory.ts`): action discriminator con 10 operaciones (`create_entity`, `update_entity`, `search_entities`, `get_entity`, `get_profile`, `create_relation`, `delete_relation`, `suggest_duplicates`, `link_memory`, `merge_entities`). Campos array/object se pasan como strings JSON-encoded (mismo patrón que el resto de tools del proyecto). Validación manual en cada case con mensajes de error específicos.
+- **Migración DB v12**: tablas `knowledge_entities` (UNIQUE `user_id, slug`, columna `search_text` normalizada sin diacríticos para búsqueda accent-insensitive), `knowledge_relations` (UNIQUE `user_id, from_entity_id, relation_type, to_entity_id`, FK con ON DELETE CASCADE a entidades) y `knowledge_entity_memories` (FK con ON DELETE CASCADE a entidades y a `memories`, así el link se limpia solo cuando se borra una memoria).
+- **Búsqueda accent-insensitive**: `searchEntities` normaliza query (strip de diacríticos + lowercase) y compara contra `search_text` precomputado en `insertEntity`/`updateEntity`. "Marilu" matchea "Marilú Lozano" vía alias y canonical_name.
+- **Filtro de tipo aplicado en SQL**: `searchEntities({ type })` usa un statement dedicado con `entity_type = ?` en el WHERE, antes del LIMIT. Evita el bug de quedar con 0 resultados cuando muchas entidades de otros tipos matchean primero.
+- **Merge tolera relaciones solapadas**: antes de redirigir `from_entity_id`/`to_entity_id` de la secundaria a la primaria, `redirectRelationsFrom` borra las filas de la secundaria que ya existen idénticas en la primaria (por `user_id + relation_type + otro extremo`). Evita el crash por UNIQUE constraint cuando ambas entidades ya eran, por ejemplo, `reviewer_of` el mismo repo.
+- **Una sola fuente de verdad para memorias linkeadas**: eliminado el campo redundante `sourceMemoryIds` del tipo `KnowledgeEntity` y la columna `source_memory_ids_json` del DDL. La tabla join `knowledge_entity_memories` (con `ON DELETE CASCADE` sobre `memories`) es la única fuente. Evita el bug de IDs fantasma visibles por `get_entity` cuando una memoria linkeada se borraba con `delete_memory`.
+- **`aliases_remove` / `tags_remove` son accent-insensitive**: `updateEntity` ahora usa `normalizeName` al comparar removes (antes `toLowerCase().trim()`), consistente con el resto del módulo. Permite borrar `"Marilú"` con `aliases_remove=["Marilu"]` y `"Música"` con `tags_remove=["musica"]`.
+- **`update_entity` corre duplicate detection en renombres**: si el patch cambia `canonical_name` o los aliases, re-ejecuta `findDuplicateCandidates` excluyendo la entidad actual. Si hay match fuerte (score ≥ 0.9) rechaza con un mensaje pidiendo usar `merge_entities` en su lugar. Evita bypass del flow de merge via rename.
+- **`regenerate_slug` es no-op cuando el canonical_name no cambia**: compara `slugify(patch.canonicalName)` contra `slugify(existing.canonicalName)`, no contra el slug actual. Preserva slugs sufijados (p. ej. `marilu_lozano_2`) en updates que tocan otros campos.
+- **Tests** (`node --test` con DB SQLite on-disk temporal): cobertura de normalización, creación con slug único, bloqueo por duplicado, búsqueda por alias, relaciones resueltas por slug, sugerencia fuzzy, merge completo, link de memoria, backward-compat con memorias libres. Script `npm run test:structured-memory`.
+
+### Changed
+- `src/index.ts`: instancia `StructuredMemoryRepository` + `StructuredMemoryService` y registra la tool junto a las demás built-in.
+
 ## [1.22.0] - 2026-04-17
 
 ### Added

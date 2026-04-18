@@ -33,6 +33,9 @@ import { createListMemoriesTool } from "./tools/built-in/list-memories.js";
 import { createAuditMemoriesTool } from "./tools/built-in/audit-memories.js";
 import { createManageListsTool } from "./tools/built-in/manage-lists.js";
 import { createSearchPersonalKnowledgeTool } from "./tools/built-in/search-personal-knowledge.js";
+import { createStructuredMemoryTool } from "./tools/built-in/structured-memory.js";
+import { createStructuredMemoryRepository } from "./memory/structured-memory/repository.js";
+import { createStructuredMemoryService } from "./memory/structured-memory/service.js";
 import { createReadFileTool } from "./tools/built-in/read-file.js";
 import { createWriteFileTool } from "./tools/built-in/write-file.js";
 import { createListDirectoryTool } from "./tools/built-in/list-directory.js";
@@ -141,6 +144,13 @@ async function main() {
   toolRegistry.register(createAuditMemoriesTool(memoryManager));
   toolRegistry.register(createManageListsTool(db));
   toolRegistry.register(createSearchPersonalKnowledgeTool(memoryManager, db));
+
+  const structuredMemoryRepo = createStructuredMemoryRepository(db);
+  const structuredMemoryService = createStructuredMemoryService(
+    structuredMemoryRepo,
+    memoryManager,
+  );
+  toolRegistry.register(createStructuredMemoryTool(structuredMemoryService));
   toolRegistry.register(createProposeToolTool());
   toolRegistry.register(createTableImageTool());
   toolRegistry.register(createRestartServerTool());
