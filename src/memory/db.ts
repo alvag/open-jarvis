@@ -344,4 +344,64 @@ function runMigrations(db: Database.Database): void {
     `);
     db.pragma("user_version = 11");
   }
+
+  if (currentVersion < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS knowledge_entities (
+        id                     TEXT PRIMARY KEY,
+        user_id                TEXT NOT NULL,
+        entity_type            TEXT NOT NULL,
+        canonical_name         TEXT NOT NULL,
+        slug                   TEXT NOT NULL,
+        search_text            TEXT NOT NULL DEFAULT '',
+        aliases_json           TEXT NOT NULL DEFAULT '[]',
+        attributes_json        TEXT NOT NULL DEFAULT '{}',
+        notes_json             TEXT NOT NULL DEFAULT '[]',
+        tags_json              TEXT NOT NULL DEFAULT '[]',
+        confidence             TEXT,
+        created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ke_user_slug
+        ON knowledge_entities(user_id, slug);
+      CREATE INDEX IF NOT EXISTS idx_ke_user_type
+        ON knowledge_entities(user_id, entity_type);
+      CREATE INDEX IF NOT EXISTS idx_ke_user_canonical
+        ON knowledge_entities(user_id, canonical_name);
+      CREATE INDEX IF NOT EXISTS idx_ke_search
+        ON knowledge_entities(user_id, search_text);
+
+      CREATE TABLE IF NOT EXISTS knowledge_relations (
+        id              TEXT PRIMARY KEY,
+        user_id         TEXT NOT NULL,
+        from_entity_id  TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+        relation_type   TEXT NOT NULL,
+        to_entity_id    TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+        attributes_json TEXT NOT NULL DEFAULT '{}',
+        notes_json      TEXT NOT NULL DEFAULT '[]',
+        confidence      TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_kr_unique
+        ON knowledge_relations(user_id, from_entity_id, relation_type, to_entity_id);
+      CREATE INDEX IF NOT EXISTS idx_kr_from
+        ON knowledge_relations(from_entity_id, relation_type);
+      CREATE INDEX IF NOT EXISTS idx_kr_to
+        ON knowledge_relations(to_entity_id, relation_type);
+
+      CREATE TABLE IF NOT EXISTS knowledge_entity_memories (
+        entity_id  TEXT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+        memory_id  INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (entity_id, memory_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kem_memory
+        ON knowledge_entity_memories(memory_id);
+    `);
+    db.pragma("user_version = 12");
+  }
 }
