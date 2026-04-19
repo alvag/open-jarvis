@@ -1,11 +1,14 @@
-import type { Tool, ToolResult } from "../tool-types.js";
+import type Database from "better-sqlite3";
+import type { Tool, ToolContext, ToolResult } from "../tool-types.js";
 import { config } from "../../config.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve, join } from "node:path";
 import { existsSync } from "node:fs";
+import { createLogger } from "../../logger.js";
 
 const execFileAsync = promisify(execFile);
+const log = createLogger("git_worktree");
 
 interface CodebaseConfig {
   root: string;
@@ -81,14 +84,15 @@ function parseWorktreeList(
   return entries;
 }
 
-export function createGitWorktreeTool(codebaseConfig: CodebaseConfig): Tool {
-  const wf = config.workflow;
-
+export function createGitWorktreeTool(
+  codebaseConfig: CodebaseConfig,
+  db?: Database.Database,
+): Tool {
   return {
     definition: {
       name: "git_worktree",
       description:
-        "Manage git worktrees for isolated branch work. Supports creating, listing, removing, and checking the status of worktrees. Each worktree provides an isolated working directory for a branch, enabling parallel development without stashing or switching branches.",
+        "Manage git worktrees for isolated branch work. Supports creating, listing, removing, and checking the status of worktrees. Each worktree provides an isolated working directory for a branch, enabling parallel development without stashing or switching branches. When creating a worktree tied to a backlog item, ALWAYS pass backlog_item_id so branch_name, worktree_path, and status='in_progress' are recorded atomically — without this link, automatic cleanup cannot find the worktree if the PR step is skipped.",
       parameters: {
         type: "object",
         properties: {
@@ -118,18 +122,23 @@ export function createGitWorktreeTool(codebaseConfig: CodebaseConfig): Tool {
             description:
               "Set to 'true' to also delete the branch when removing a worktree. Only used with 'remove'. Default: 'false'.",
           },
+          backlog_item_id: {
+            type: "string",
+            description:
+              "Optional backlog item ID (number as string) to link the worktree with. When provided with 'create', the backlog item is atomically updated with branch_name, worktree_path, and status='in_progress' so later cleanup can find the worktree even if the PR step never runs.",
+          },
         },
         required: ["action"],
       },
     },
 
-    async execute(args, _context): Promise<ToolResult> {
+    async execute(args, context): Promise<ToolResult> {
       const action = args.action as string;
 
       try {
         switch (action) {
           case "create":
-            return await handleCreate(args, codebaseConfig);
+            return await handleCreate(args, codebaseConfig, db, context);
           case "list":
             return await handleList(codebaseConfig);
           case "remove":
@@ -155,6 +164,8 @@ export function createGitWorktreeTool(codebaseConfig: CodebaseConfig): Tool {
 async function handleCreate(
   args: Record<string, unknown>,
   codebaseConfig: CodebaseConfig,
+  db: Database.Database | undefined,
+  context: ToolContext,
 ): Promise<ToolResult> {
   const wf = config.workflow;
   let branchName = args.branch_name as string;
@@ -215,12 +226,102 @@ async function handleCreate(
     codebaseConfig.root,
   );
 
+  // Auto-link backlog item if provided. Scoped by user_id to prevent
+  // one user from hijacking another's backlog row. Atomicity contract:
+  // if backlog_item_id is passed, the link MUST succeed — otherwise we
+  // roll back the worktree so the caller cannot mistakenly proceed with
+  // create_pr using an unlinked backlog row (which would leak the worktree
+  // once the PR is merged: status=pr_created with worktree_path=NULL).
+  const backlogItemRaw = args.backlog_item_id as string | undefined;
+  let backlogItemLinked: number | null = null;
+  if (backlogItemRaw && db) {
+    const backlogId = parseInt(backlogItemRaw, 10);
+    let linkError: string | null = null;
+
+    if (Number.isNaN(backlogId)) {
+      linkError = `invalid backlog_item_id "${backlogItemRaw}" (not an integer)`;
+    } else {
+      try {
+        // Only link to backlog rows currently in status='open'. Anything
+        // already 'in_progress', 'pr_created', 'merged' or 'dismissed' is
+        // either in flight or closed, and overwriting its branch_name /
+        // worktree_path would clobber history (e.g. the link to an existing
+        // merged PR). A retry after a partial failure requires explicit
+        // intervention: the agent must first reset status via manage_backlog.
+        const result = db
+          .prepare(
+            "UPDATE backlog_items SET branch_name = ?, worktree_path = ?, status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND user_id = ? AND status = 'open'",
+          )
+          .run(branchName, worktreePath, backlogId, context.userId);
+        if (result.changes > 0) {
+          backlogItemLinked = backlogId;
+          log.info(
+            { backlogId, branchName, worktreePath, userId: context.userId },
+            "Linked worktree to backlog item",
+          );
+        } else {
+          // Disambiguate: does the row exist at all, or does it exist in a
+          // non-open state? This helps the agent surface the real reason
+          // without issuing a second, expensive retry.
+          const existing = db
+            .prepare<[number, string], { status: string }>(
+              "SELECT status FROM backlog_items WHERE id = ? AND user_id = ?",
+            )
+            .get(backlogId, context.userId);
+          if (!existing) {
+            linkError = `no backlog row with id=${backlogId} belongs to user ${context.userId}`;
+          } else {
+            linkError = `backlog row id=${backlogId} is in status='${existing.status}', not 'open' — refusing to overwrite existing link`;
+          }
+        }
+      } catch (err) {
+        linkError = (err as Error).message;
+      }
+    }
+
+    if (linkError) {
+      // Rollback the worktree + branch we just created so the caller can retry
+      // cleanly. `--force` handles the (rare) case where we can't even call
+      // remove without it; a non-forced remove should succeed since the tree
+      // is brand new and clean.
+      log.warn(
+        { backlogId, linkError, worktreePath, branchName },
+        "Backlog link failed — rolling back worktree",
+      );
+      try {
+        await git(
+          ["worktree", "remove", "--force", worktreePath],
+          codebaseConfig.root,
+        );
+      } catch (err) {
+        log.error(
+          { worktreePath, error: (err as Error).message },
+          "Rollback: git worktree remove failed — orphan may be left on disk, please clean up manually",
+        );
+      }
+      try {
+        await git(["branch", "-D", branchName], codebaseConfig.root);
+      } catch (err) {
+        log.warn(
+          { branchName, error: (err as Error).message },
+          "Rollback: branch delete failed",
+        );
+      }
+      return {
+        success: false,
+        data: null,
+        error: `Created worktree but failed to link to backlog item: ${linkError}. Worktree rolled back — verify backlog_item_id and retry.`,
+      };
+    }
+  }
+
   return {
     success: true,
     data: {
       worktree_path: worktreePath,
       branch_name: branchName,
       base_branch: baseBranch,
+      backlog_item_id: backlogItemLinked,
     },
   };
 }

@@ -20,9 +20,9 @@ interface BacklogRow {
 }
 
 type CleanupOutcome =
-  | { kind: "removed" }
+  | { kind: "removed"; branchDeleted: boolean }
   | { kind: "skipped_dirty"; reason: string }
-  | { kind: "skipped_missing" }
+  | { kind: "skipped_missing"; branchDeleted: boolean }
   | { kind: "error"; message: string };
 
 async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
@@ -44,23 +44,27 @@ async function cleanupWorktree(
   branchName: string | null,
 ): Promise<CleanupOutcome> {
   if (!worktreePath) {
-    return { kind: "skipped_missing" };
+    // No worktree recorded — and no branch to attempt either (we only track
+    // branch_name alongside worktree_path). Treat as missing + no branch action.
+    return { kind: "skipped_missing", branchDeleted: branchName === null };
   }
 
   if (!existsSync(worktreePath)) {
+    let branchDeleted = branchName === null;
     if (branchName) {
       try {
         await execFileAsync("git", ["-C", codebaseRoot, "branch", "-D", branchName], {
           timeout: 10_000,
         });
+        branchDeleted = true;
       } catch (err) {
         log.warn(
           { branchName, error: (err as Error).message },
-          "Branch delete failed after worktree already missing",
+          "Branch delete failed after worktree already missing — branch left alive",
         );
       }
     }
-    return { kind: "skipped_missing" };
+    return { kind: "skipped_missing", branchDeleted };
   }
 
   if (await hasUncommittedChanges(worktreePath)) {
@@ -81,20 +85,22 @@ async function cleanupWorktree(
     return { kind: "error", message };
   }
 
+  let branchDeleted = branchName === null;
   if (branchName) {
     try {
       await execFileAsync("git", ["-C", codebaseRoot, "branch", "-D", branchName], {
         timeout: 10_000,
       });
+      branchDeleted = true;
     } catch (err) {
       log.warn(
         { branchName, error: (err as Error).message },
-        "Branch delete failed after worktree removal",
+        "Branch delete failed after worktree removal — branch left alive",
       );
     }
   }
 
-  return { kind: "removed" };
+  return { kind: "removed", branchDeleted };
 }
 
 function formatNotification(
@@ -108,11 +114,21 @@ function formatNotification(
   const lines: string[] = [header];
 
   if (cleanup.kind === "removed") {
-    lines.push(`Worktree ${item.worktree_path} y rama ${item.branch_name ?? "(sin rama)"} eliminados.`);
+    if (cleanup.branchDeleted) {
+      lines.push(`Worktree ${item.worktree_path} y rama ${item.branch_name ?? "(sin rama)"} eliminados.`);
+    } else {
+      lines.push(`Worktree ${item.worktree_path} eliminado. \u26A0\uFE0F La rama ${item.branch_name} no se pudo borrar; revisala manualmente.`);
+    }
   } else if (cleanup.kind === "skipped_dirty") {
     lines.push(`\u26A0\uFE0F ${cleanup.reason}. Worktree conservado en ${item.worktree_path}.`);
   } else if (cleanup.kind === "skipped_missing") {
-    lines.push(`Worktree ya no existia. Rama ${item.branch_name ?? "(sin rama)"} eliminada si estaba presente.`);
+    if (cleanup.branchDeleted) {
+      lines.push(`Worktree ya no existia. Rama ${item.branch_name ?? "(sin rama)"} eliminada.`);
+    } else if (item.branch_name) {
+      lines.push(`Worktree ya no existia. \u26A0\uFE0F Rama ${item.branch_name} sigue viva; revisala manualmente.`);
+    } else {
+      lines.push("Worktree ya no existia. No hab\u00EDa rama asociada.");
+    }
   } else if (cleanup.kind === "error") {
     lines.push(`\u26A0\uFE0F Error limpiando worktree: ${cleanup.message}. Revisalo manualmente.`);
   }
@@ -168,8 +184,14 @@ export async function checkGithubPRChanges(
       return;
     }
 
-    const updateStatus = db.prepare(
+    const updateStatusOnly = db.prepare(
       "UPDATE backlog_items SET status = ?, updated_at = datetime('now') WHERE id = ?",
+    );
+    const updateStatusClearWorktreeOnly = db.prepare(
+      "UPDATE backlog_items SET status = ?, worktree_path = NULL, updated_at = datetime('now') WHERE id = ?",
+    );
+    const updateStatusAndClean = db.prepare(
+      "UPDATE backlog_items SET status = ?, worktree_path = NULL, branch_name = NULL, updated_at = datetime('now') WHERE id = ?",
     );
 
     let checked = 0;
@@ -195,7 +217,20 @@ export async function checkGithubPRChanges(
         ? await cleanupWorktree(codebaseRoot, item.worktree_path, item.branch_name)
         : { kind: "skipped_dirty", reason: "Autocleanup deshabilitado (WORKFLOW_AUTO_CLEANUP_WORKTREE=false)" };
 
-      updateStatus.run(newStatus, item.id);
+      // Null out worktree_path only when we confirmed the worktree is gone.
+      // Null out branch_name ALSO only when `git branch -D` succeeded — otherwise
+      // the branch is still alive and we must preserve branch_name as the only
+      // surviving pointer for manual cleanup. For skipped_dirty / error we keep
+      // both fields so the user still has a pointer to investigate manually.
+      if (cleanup.kind === "removed" || cleanup.kind === "skipped_missing") {
+        if (cleanup.branchDeleted) {
+          updateStatusAndClean.run(newStatus, item.id);
+        } else {
+          updateStatusClearWorktreeOnly.run(newStatus, item.id);
+        }
+      } else {
+        updateStatusOnly.run(newStatus, item.id);
+      }
       log.info(
         {
           backlogId: item.id,
