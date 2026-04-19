@@ -136,7 +136,7 @@ export class CodexProvider implements LLMProvider {
         if (attempt === MAX_RETRIES) throw err;
         const delayMs =
           Math.min(1000 * 2 ** attempt, 8000) + Math.random() * 500;
-        log.warn(
+        log.info(
           {
             attempt: attempt + 1,
             maxRetries: MAX_RETRIES,
@@ -192,7 +192,7 @@ export class CodexProvider implements LLMProvider {
           Math.min(1000 * 2 ** attempt, 8000) + Math.random() * 500;
       }
 
-      log.warn(
+      log.info(
         {
           attempt: attempt + 1,
           maxRetries: MAX_RETRIES,
