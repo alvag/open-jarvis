@@ -133,6 +133,9 @@ const envSchema = z
     WORKFLOW_VALIDATION_COMMANDS: CsvList.default([]),
     WORKFLOW_AUTO_CLEANUP_WORKTREE: BoolFromString.default(true),
     WORKFLOW_PR_POLL_INTERVAL_MINUTES: IntFromString.default(10),
+    WORKFLOW_RECONCILER_ENABLED: BoolFromString.default(true),
+    WORKFLOW_RECONCILER_INTERVAL_MINUTES: IntFromString.default(30),
+    WORKFLOW_RECONCILER_ORPHAN_AGE_MINUTES: IntFromString.default(120),
 
     EXTRA_SAFE_COMMANDS: CsvList.default([]),
 
@@ -269,6 +272,11 @@ export const config = {
     validationCommands: env.WORKFLOW_VALIDATION_COMMANDS,
     autoCleanupWorktree: env.WORKFLOW_AUTO_CLEANUP_WORKTREE,
     prPollIntervalMinutes: env.WORKFLOW_PR_POLL_INTERVAL_MINUTES,
+  },
+  workflowReconciler: {
+    enabled: env.WORKFLOW_RECONCILER_ENABLED,
+    intervalMinutes: env.WORKFLOW_RECONCILER_INTERVAL_MINUTES,
+    orphanAgeMinutes: env.WORKFLOW_RECONCILER_ORPHAN_AGE_MINUTES,
   },
   extraSafeCommands: env.EXTRA_SAFE_COMMANDS,
   codeReview: {

@@ -272,14 +272,15 @@ If quick-wins exist:
 4. **If NO open Jarvis PR**:
    - Pick the most critical quick-win (highest severity first, then highest confidence)
    - Include in notification: "Auto-fix iniciado para: <title>"
-   - Execute the development workflow:
-     a. Call manage_backlog action=update_item to set status=in_progress
-     b. Create a git worktree with git_worktree for the fix
-     c. Read affected files and implement the minimal focused change
-     d. Validate with the project's validation commands
-     e. Commit, push, and create a PR via github_prs
-     f. Update the backlog item with the PR URL
+   - Execute the development workflow (atomic links via backlog_item_id):
+     a. Create the worktree via **git_worktree** action=create passing backlog_item_id=<id>.
+        This atomically sets branch_name, worktree_path, and status='in_progress' on the backlog item.
+     b. Read affected files and implement the minimal focused change.
+     c. Validate with the project's validation commands.
+     d. Commit, push, and create the PR via **github_prs** action=create_pr passing backlog_item_id=<id>.
+        This atomically transitions the backlog item to status='pr_created' with pr_number/pr_url.
    - Add to notification: "PR creado: <url> — pendiente de revision."
+   - IMPORTANT: always pass backlog_item_id to both tools — otherwise the worktree may leak and the cleanup monitor will never find it.
 
 If multiple quick-wins exist, only fix the single most critical one per review run.
 

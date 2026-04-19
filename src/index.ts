@@ -212,7 +212,7 @@ async function main() {
 
   // Workflow tools (worktree + GitHub PRs)
   if (config.workflow.enabled && config.codebase.enabled) {
-    toolRegistry.register(createGitWorktreeTool(config.codebase));
+    toolRegistry.register(createGitWorktreeTool(config.codebase, db));
     toolRegistry.register(createGithubPrsTool(config.codebase.root, db));
     log.info("Workflow tools enabled (git worktree + GitHub PRs)");
   }
@@ -423,6 +423,28 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
           timezone: config.scheduler.timezone,
         });
         log.info({ intervalMinutes: interval }, "Seeded GitHub PR monitor task");
+      }
+    }
+
+    // Worktree reconciler — detect orphan worktrees (disk ↔ DB divergence)
+    if (
+      config.workflow.enabled &&
+      config.codebase.enabled &&
+      config.workflowReconciler.enabled
+    ) {
+      const existing = listTasks(firstUserId).find(t => t.type === "worktree-reconciler");
+      if (!existing) {
+        const interval = config.workflowReconciler.intervalMinutes;
+        const cronExpr = `*/${interval} * * * *`;
+        createTask({
+          userId: firstUserId,
+          name: "Worktree Reconciler",
+          type: "worktree-reconciler",
+          cronExpression: cronExpr,
+          prompt: "Detect and clean up orphan worktrees and phantom backlog references.",
+          timezone: config.scheduler.timezone,
+        });
+        log.info({ intervalMinutes: interval, orphanAgeMinutes: config.workflowReconciler.orphanAgeMinutes }, "Seeded worktree reconciler task");
       }
     }
 
