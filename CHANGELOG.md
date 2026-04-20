@@ -4,6 +4,11 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 ## [Unreleased]
 
+## [1.25.1] - 2026-04-20
+
+### Fixed
+- **Config tolerante para horas `HH:MM`** (`src/config.ts`): un typo menor como `CODE_REVIEW_TIMES=...,8:00,...` tiraba el bot con `exit 1` en el arranque y lo dejaba en loop de crash del supervisor. Ahora el parser acepta `H:MM` y normaliza a `HH:MM` (`8:00` → `08:00`) logueando un warning. En listas CSV (`CODE_REVIEW_TIMES`), cada entrada inválida (fuera de rango, no-numérica) se descarta con warning en vez de romper todo el arranque; si ninguna es válida, la lista queda vacía (feature desactivada para esa corrida) pero el bot sigue vivo. `BRIEFING_TIME` y `CONSOLIDATION_TIME` (singles) también se normalizan; solo fallan si son irrecuperables. Nuevo helper `normalizeHHMM()` centraliza la lógica.
+
 ## [1.25.0] - 2026-04-19
 
 ### Added

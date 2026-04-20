@@ -42,23 +42,63 @@ const IntCsvList = z.string().transform((v, ctx) => {
   return ids;
 });
 
-const TimeHHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
+// Accepts strict "HH:MM" and also tolerant "H:MM" (e.g., "8:00" → "08:00").
+// Returns normalized "HH:MM" or null if unrecoverable (out of range / non-numeric).
+function normalizeHHMM(input: string): string | null {
+  const trimmed = input.trim();
+  const match = /^(\d{1,2}):(\d{1,2})$/.exec(trimmed);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
-const TimesCsvList = z.string().transform((v, ctx) => {
+const TimeHHMM = z.string().transform((v, ctx) => {
+  const normalized = normalizeHHMM(v);
+  if (!normalized) {
+    ctx.addIssue({
+      code: "custom",
+      message: `"${v}" is not a valid HH:MM time (expected 00:00–23:59)`,
+    });
+    return z.NEVER;
+  }
+  if (normalized !== v.trim()) {
+    console.warn(`[config] Normalized time "${v}" → "${normalized}"`);
+  }
+  return normalized;
+});
+
+const TimesCsvList = z.string().transform((v) => {
   const parts = v
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  const result: string[] = [];
+  const normalized: Array<[string, string]> = [];
+  const skipped: string[] = [];
   for (const p of parts) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(p)) {
-      ctx.addIssue({
-        code: "custom",
-        message: `"${p}" is not a valid HH:MM time`,
-      });
-      return z.NEVER;
+    const n = normalizeHHMM(p);
+    if (!n) {
+      skipped.push(p);
+      continue;
     }
+    if (n !== p) normalized.push([p, n]);
+    result.push(n);
   }
-  return parts;
+  if (normalized.length > 0) {
+    const pairs = normalized.map(([o, n]) => `"${o}" → "${n}"`).join(", ");
+    console.warn(`[config] Normalized time values: ${pairs}`);
+  }
+  if (skipped.length > 0) {
+    console.warn(
+      `[config] Ignoring invalid time values (expected HH:MM, 00:00–23:59): ${skipped
+        .map((s) => `"${s}"`)
+        .join(", ")}`,
+    );
+  }
+  return result;
 });
 
 const envSchema = z
