@@ -128,7 +128,7 @@ export class TelegramChannel implements Channel {
       }
     });
 
-    // Voice messages
+    // Voice + audio messages
     if (this.transcriber) {
       const transcriber = this.transcriber;
 
@@ -161,10 +161,51 @@ export class TelegramChannel implements Channel {
           await ctx.reply("No pude procesar el mensaje de voz. Intenta de nuevo.");
         }
       });
-    } else {
-      this.bot.on("message:voice", async (ctx) => {
-        await ctx.reply("Los mensajes de voz no están disponibles. Escríbeme en texto.");
+
+      this.bot.on("message:audio", async (ctx) => {
+        const audio = ctx.message.audio;
+        const duration = audio.duration;
+        const mimeType = audio.mime_type || "";
+        const ext = extFromAudio(audio.file_name, mimeType);
+
+        if (ext === null) {
+          const label = mimeType || audio.file_name || "desconocido";
+          await ctx.reply(`Formato de audio no soportado (${label}). Envía MP3, WAV, M4A, OGG o FLAC.`);
+          return;
+        }
+
+        try {
+          const file = await ctx.api.getFile(audio.file_id);
+          const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+          const res = await fetch(fileUrl);
+          const buffer = Buffer.from(await res.arrayBuffer());
+
+          const fileName = `audio_${Date.now()}.${ext}`;
+          const filePath = join(UPLOADS_DIR, fileName);
+          writeFileSync(filePath, buffer);
+
+          const result = await transcriber.transcribe(filePath);
+
+          if (!result.text || result.text.trim().length === 0) {
+            await ctx.reply("No pude entender el audio. ¿Puedes reenviarlo o escribirlo?");
+            return;
+          }
+
+          const durationStr = formatDuration(duration);
+          const fileHint = audio.file_name ? ` (archivo: ${audio.file_name})` : "";
+          const text = `[Mensaje de voz, ${durationStr}]${fileHint} ${result.text}`;
+          await this.handleIncoming(ctx, text, [], handler);
+        } catch (err) {
+          log.error({ error: (err as Error).message, duration, mimeType }, "error processing audio message");
+          await ctx.reply("No pude procesar el audio. Intenta de nuevo.");
+        }
       });
+    } else {
+      const unavailable = async (ctx: Context) => {
+        await ctx.reply("Los mensajes de voz no están disponibles. Escríbeme en texto.");
+      };
+      this.bot.on("message:voice", unavailable);
+      this.bot.on("message:audio", unavailable);
     }
 
     // Approval gate callback handler (registered once at startup)
@@ -319,6 +360,28 @@ function formatDuration(seconds: number): string {
   const min = Math.floor(seconds / 60);
   const sec = seconds % 60;
   return sec > 0 ? `${min}m${sec}s` : `${min}m`;
+}
+
+/**
+ * Pick a file extension for an audio upload. Prefers the extension in
+ * `file_name` when present; falls back to inferring from MIME. Returns `null`
+ * when neither source identifies a supported audio format — gates the audio
+ * handler. `mime_type` is optional in Telegram's API, so relying on MIME alone
+ * would reject valid uploads where clients send only `file_name`.
+ */
+function extFromAudio(fileName: string | undefined, mimeType: string): string | null {
+  const nameExt = fileName?.split(".").pop()?.toLowerCase();
+  if (nameExt && /^(mp3|ogg|wav|m4a|flac|webm|mp4|opus)$/.test(nameExt)) return nameExt;
+
+  const m = mimeType.toLowerCase();
+  if (!m.startsWith("audio/")) return null;
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("opus") || m.includes("ogg")) return "ogg";
+  if (m.includes("wav") || m.includes("wave")) return "wav";
+  if (m.includes("m4a") || m.includes("mp4")) return "m4a";
+  if (m.includes("flac")) return "flac";
+  if (m.includes("webm")) return "webm";
+  return null;
 }
 
 function sanitizeTelegramMarkdown(text: string): string {

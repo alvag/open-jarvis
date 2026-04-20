@@ -7,6 +7,7 @@ Jarvis is a personal AI agent that runs locally and uses Telegram as its interfa
 - **Runtime**: Node.js with TypeScript (ES modules)
 - **Telegram**: grammy (long polling, no web server)
 - **LLM**: OpenRouter (OpenAI-compatible API)
+- **Speech-to-Text**: Groq Whisper (`whisper-large-v3-turbo`, voice + audio transcription)
 - **Database**: better-sqlite3 (WAL mode)
 - **Dev runner**: tsx (with watch mode)
 
@@ -33,9 +34,11 @@ src/
 │       ├── get-current-time.ts
 │       ├── save-memory.ts
 │       └── search-memories.ts
+├── transcription/
+│   └── transcriber.ts    # Groq Whisper adapter (voice + audio → text)
 └── channels/
     ├── channel.ts        # Channel interface
-    └── telegram.ts       # Grammy Telegram implementation
+    └── telegram.ts       # Grammy Telegram (text, photo, document, voice, audio)
 ```
 
 ## Key Patterns

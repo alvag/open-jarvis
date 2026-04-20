@@ -140,6 +140,10 @@ async function executeTask(task: ScheduledTaskRow): Promise<void> {
       const { reconcileWorktrees } = await import("./worktree-reconciler.js");
       const { config } = await import("../config.js");
       await reconcileWorktrees(deps.db, deps.sendMessage, fresh.user_id, config.codebase.root);
+    } else if (fresh.type === "uploads-cleanup") {
+      const { cleanupUploads } = await import("./uploads-cleanup.js");
+      const { config } = await import("../config.js");
+      await cleanupUploads(config.uploadsCleanup.retentionDays);
     } else if (fresh.type === "consolidation") {
       const { buildConsolidationPrompt } = await import("./consolidation.js");
       const dynamicPrompt = buildConsolidationPrompt(deps.memoryManager, fresh.user_id);

@@ -158,6 +158,10 @@ const envSchema = z
     REPETITION_TIGHT_WINDOW_DAYS: IntFromString.default(3),
     REPETITION_TIGHT_THRESHOLD: IntFromString.default(2),
     REPETITION_COOLDOWN_DAYS: IntFromString.default(7),
+
+    UPLOADS_CLEANUP_ENABLED: BoolFromString.default(true),
+    UPLOADS_CLEANUP_INTERVAL_HOURS: IntFromString.default(24),
+    UPLOADS_CLEANUP_RETENTION_DAYS: IntFromString.default(30),
   })
   .superRefine((val, ctx) => {
     if (val.LLM_PROVIDER === "openrouter" && !val.OPENROUTER_API_KEY) {
@@ -299,5 +303,10 @@ export const config = {
     tightWindowDays: env.REPETITION_TIGHT_WINDOW_DAYS,
     tightThreshold: env.REPETITION_TIGHT_THRESHOLD,
     cooldownDays: env.REPETITION_COOLDOWN_DAYS,
+  },
+  uploadsCleanup: {
+    enabled: env.UPLOADS_CLEANUP_ENABLED,
+    intervalHours: env.UPLOADS_CLEANUP_INTERVAL_HOURS,
+    retentionDays: env.UPLOADS_CLEANUP_RETENTION_DAYS,
   },
 } as const;

@@ -448,6 +448,36 @@ Keep total under 300 words. Be concise and direct. If a tool fails or is unavail
       }
     }
 
+    // Uploads cleanup — drop voice/audio/photo/document files older than retention
+    if (config.uploadsCleanup.enabled) {
+      const existing = listTasks(firstUserId).find(t => t.type === "uploads-cleanup");
+      if (!existing) {
+        // cron can only express "every N hours" exactly when N divides 24
+        // (1, 2, 3, 4, 6, 8, 12) or when N === 24 (daily). Anything else
+        // (25h, 36h, 5h, etc.) would produce a pattern that fires at wrong
+        // intervals or skips at day boundaries. Clamp to 24h and warn.
+        const requested = config.uploadsCleanup.intervalHours;
+        const validDivisors = new Set([1, 2, 3, 4, 6, 8, 12, 24]);
+        const effectiveHours = validDivisors.has(requested) ? requested : 24;
+        if (effectiveHours !== requested) {
+          log.warn(
+            { requested, effectiveHours },
+            "UPLOADS_CLEANUP_INTERVAL_HOURS must be a divisor of 24 (1/2/3/4/6/8/12/24); clamping to 24",
+          );
+        }
+        const cronExpr = effectiveHours === 24 ? "0 4 * * *" : `0 */${effectiveHours} * * *`;
+        createTask({
+          userId: firstUserId,
+          name: "Uploads Cleanup",
+          type: "uploads-cleanup",
+          cronExpression: cronExpr,
+          prompt: "Delete old files from ./data/uploads.",
+          timezone: config.scheduler.timezone,
+        });
+        log.info({ intervalHours: effectiveHours, retentionDays: config.uploadsCleanup.retentionDays }, "Seeded uploads cleanup task");
+      }
+    }
+
     // Proactive code review — seed if not already in DB
     if (config.codeReview.enabled && config.codebase.enabled) {
       const existingReviews = listTasks(firstUserId).filter(t => t.type === "code-review");
